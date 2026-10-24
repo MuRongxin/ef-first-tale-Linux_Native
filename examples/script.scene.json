@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "title": "ef · 剧本文字校阅",
+  "background": [0.045, 0.06, 0.09, 1],
+  "layers": [
+    {"kind": "text", "slot": "script_mode", "x": 32, "y": 24, "font_size": 24, "text": "ef · 剧本文字校阅"},
+    {"kind": "text", "slot": "script_status", "x": 32, "y": 62, "font_size": 16, "width": 736, "color": [0.64, 0.75, 0.85, 1], "text": ""},
+    {"kind": "rect", "x": 32, "y": 116, "width": 736, "height": 416, "color": [0.09, 0.12, 0.17, 1]},
+    {"kind": "text", "slot": "script_name", "x": 56, "y": 136, "font_size": 22, "width": 688, "color": [0.66, 0.82, 0.96, 1], "text": ""},
+    {"kind": "text", "slot": "script_text", "x": 56, "y": 180, "font_size": 24, "width": 688, "text": ""},
+    {"kind": "text", "slot": "script_choice", "x": 56, "y": 430, "height": 36, "font_size": 22, "width": 688, "color": [0.75, 0.86, 0.98, 1], "text": ""},
+    {"kind": "text", "slot": "script_help", "x": 32, "y": 547, "font_size": 16, "width": 736, "color": [0.64, 0.75, 0.85, 1], "text": "点击 / 空格 / 回车推进；数字键或点击选择。\n文字校阅跳过未实现的画面与音频命令；原版演出待接入。"}
+  ]
+}

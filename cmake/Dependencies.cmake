@@ -1,0 +1,56 @@
+include(FetchContent)
+find_package(PNG REQUIRED)
+find_package(PkgConfig REQUIRED)
+find_package(nlohmann_json 3.11 QUIET)
+if(NOT nlohmann_json_FOUND)
+    if(NOT EF_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR "Install nlohmann-json3-dev or enable EF_FETCH_DEPENDENCIES")
+    endif()
+    set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+    set(JSON_Install OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(nlohmann_json
+        URL https://codeload.github.com/nlohmann/json/tar.gz/refs/tags/v3.12.0
+        URL_HASH SHA256=4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187)
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
+pkg_check_modules(WEBP QUIET IMPORTED_TARGET libwebp>=1.3)
+if(WEBP_FOUND)
+    set(EF_WEBP_TARGET PkgConfig::WEBP)
+else()
+    if(NOT EF_FETCH_DEPENDENCIES)
+        message(FATAL_ERROR "Install libwebp-dev or enable EF_FETCH_DEPENDENCIES")
+    endif()
+    foreach(feature ANIM_UTILS CWEBP DWEBP GIF2WEBP IMG2WEBP VWEBP WEBPINFO WEBPMUX EXTRAS)
+        set(WEBP_BUILD_${feature} OFF CACHE BOOL "" FORCE)
+    endforeach()
+    FetchContent_Declare(webp
+        URL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz
+        URL_HASH SHA256=e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564)
+    FetchContent_MakeAvailable(webp)
+    set(EF_WEBP_TARGET webp)
+endif()
+
+if(EF_BUILD_APP)
+    find_package(OpenGL REQUIRED)
+    find_package(GLEW REQUIRED)
+    find_package(Freetype REQUIRED)
+    # Older SDL 3.2 can terminate on X11 BadWindow during fullscreen reparenting.
+    # Use the verified stable release with the upstream nonfatal error handler.
+    find_package(SDL3 3.4.18 CONFIG QUIET)
+    if(NOT SDL3_FOUND)
+        if(NOT EF_FETCH_DEPENDENCIES)
+            message(FATAL_ERROR "Install SDL3 >= 3.4.18 or enable EF_FETCH_DEPENDENCIES")
+        endif()
+        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDL_STATIC ON CACHE BOOL "" FORCE)
+        set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+        set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+        set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(SDL3
+            URL https://www.libsdl.org/release/SDL3-3.4.18.tar.gz
+            URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3)
+        FetchContent_MakeAvailable(SDL3)
+    endif()
+endif()

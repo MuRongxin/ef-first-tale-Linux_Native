@@ -1,0 +1,25 @@
+#pragma once
+#include "app/application.hpp"
+#include "script/script.hpp"
+#include "scene/scene.hpp"
+namespace ef {
+class ScriptView {
+public:
+    ScriptView(const Content& content, const Options& options);
+    void update(double seconds);
+    void advance() { runtime_.advance(); }
+    void choose(std::size_t index);
+    void click(Point point);
+    [[nodiscard]] Scene scene() const;
+    [[nodiscard]] const ScriptRuntime& runtime() const { return runtime_; }
+private:
+    ScriptLibrary library_;
+    ScriptRuntime runtime_;
+    Scene template_;
+    Options options_;
+    std::size_t reported_{};
+    std::string last_message_;
+    ScriptState last_state_{ScriptState::running};
+    const Layer* choice_layer() const;
+};
+}

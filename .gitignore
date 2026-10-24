@@ -1,0 +1,22 @@
+# 本地设计/逆向资料、协作说明、素材和生成清单不进入公开仓库。
+/AGENTS.md
+/AGENT.md
+/docs/
+/assets/
+/work/
+/analysis/
+
+# Python
+__pycache__/
+*.pyc
+
+# 编辑器/系统
+.DS_Store
+*.swp
+
+# Native builds, imported content and preview captures (never game data in git)
+/build/
+/build-*/
+/CMakeUserPresets.json
+/content/*
+!/content/README.md
