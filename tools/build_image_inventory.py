@@ -299,9 +299,12 @@ def hd_policy(cat, role, w, h, script_refs, solid, kind):
                 'reason': 'PSD 是制作源文件，保留作为 UI 高清化参考/素材，不参与超分批处理',
                 'priority': 9}
     if cat == 'thumb':
-        return {'method': 'derive_from_hd',
-                'reason': '缩略图应由对应高清 CG 降采样生成，直接超分会放大 JPEG 级噪点',
-                'priority': 3}
+        # 决策：缩略图不预烘文件。运行时由对应 4× 高清 CG 降采样并缓存，
+        # 原始 1× 缩略图作为缺图回退（见 docs/NATIVE-RUNTIME.md）。
+        return {'method': 'runtime_derive_from_hd',
+                'reason': '缩略图不预烘：运行时从对应 4× 高清 CG 降采样并缓存，'
+                          '1× 原图作为缺图回退；不要单独超分',
+                'priority': 3, 'runtime': True}
     if cat == 'mask':
         return {'method': 'procedural_regen',
                 'reason': '纯色/渐变过渡遮罩应按目标分辨率程序化重建（或最近邻放大），不适合 AI 超分',
@@ -413,7 +416,8 @@ def main(argv=None):
                 pol['scale'] = scale
                 pol['target_w'] = rec['w'] * scale
                 pol['target_h'] = rec['h'] * scale
-                pol['out_rel_path'] = 'assets/hd/%s' % rec['rel_path']
+                if not pol.get('runtime'):
+                    pol['out_rel_path'] = 'assets/hd/%s' % rec['rel_path']
         rec['hd'] = pol
 
     # -- 5. logical groups / duplicates / overrides ------------------------
@@ -704,7 +708,7 @@ def write_summary_md(path, records, plan_entries, cat_stats, method_stats,
     method_note = {
         'upscale_art': 'AI 超分（动画风格模型）4× 母版',
         'upscale_ui_or_redraw': 'UI：超分或矢量重绘，二者择一',
-        'derive_from_hd': '由高清 CG 降采样重新生成缩略图',
+        'runtime_derive_from_hd': '缩略图运行时从 4× 高清 CG 降采样（不预烘文件）',
         'procedural_regen': '纯色/渐变遮罩：按目标分辨率程序化重建',
         'scale_with_pair': '.ani：坐标随配对 PNG 同比缩放（格式待逆向后处理）',
         'keep_as_source': 'PSD 保留为源素材，不参与批处理',
