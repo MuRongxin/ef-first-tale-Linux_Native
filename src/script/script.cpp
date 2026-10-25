@@ -60,7 +60,7 @@ void validate(const Instruction& instruction) {
 }
 std::string Instruction::location() const { return script + ':' + std::to_string(line) + ' ' + command; }
 bool core_command(const std::string& name) {
-    static const std::set<std::string> supported{".message", ".wait", ".label", ".goto", ".if", ".select", ".set", ".setGlobal", ".chain", ".end", "#include"};
+    static const std::set<std::string> supported{".message", ".wait", ".label", ".goto", ".if", ".select", ".set", ".setGlobal", ".chain", ".end", ".pragma", "#include"};
     return supported.contains(name);
 }
 std::vector<Instruction> parse_script(std::string_view text, const std::string& id) {
@@ -77,7 +77,10 @@ std::vector<Instruction> parse_script(std::string_view text, const std::string& 
         if (first == std::string::npos) continue;
         Instruction instruction{id, {}, raw, line_number, 0, {}};
         std::string line = raw.substr(first);
-        if (line.starts_with("[e].") || line.starts_with("[j].")) {
+        if (line.starts_with("[e]:.") || line.starts_with("[j]:.")) {
+            instruction.variant = line[1];
+            line.erase(0,4); // explicitly supported archive spelling; raw/physical line are retained
+        } else if (line.starts_with("[e].") || line.starts_with("[j].")) {
             instruction.variant = line[1];
             line.erase(0, 3);
         }
@@ -166,7 +169,7 @@ std::shared_ptr<const Program> ScriptLibrary::compile(const std::string& id, cha
     return program;
 }
 nlohmann::json ScriptLibrary::audit() const {
-    nlohmann::json report{{"scripts", entries_.size()}, {"instructions", 0}, {"messages", 0}, {"commands", nlohmann::json::object()}, {"unsupported", nlohmann::json::object()}};
+    nlohmann::json report{{"support_scope", "core_control_flow; scene/audio capabilities depend on runtime host and arguments"}, {"scripts", entries_.size()}, {"instructions", 0}, {"messages", 0}, {"commands", nlohmann::json::object()}, {"unsupported", nlohmann::json::object()}};
     std::size_t instructions = 0, messages = 0;
     std::map<std::string, std::size_t> commands, unsupported;
     for (const auto& [id, path] : entries_) {
@@ -214,6 +217,8 @@ nlohmann::json ScriptLibrary::audit_resources() const {
                 const std::string kind = cmd == ".playBGM" ? "bgm" :
                     (cmd == ".playSE" || cmd == ".playSE2") ? "se" : cmd == ".playVoice" ? "voice" : "script";
                 refs.emplace_back(kind, args[0]);
+            } else if (cmd == ".effect" && !args.empty() && (args[0] == "Snow" || args[0] == "SnowH")) {
+                for (const auto* sprite : {"snowS.png", "snowM.png", "snowL.png"}) refs.emplace_back("image",sprite);
             } else if (cmd == ".movie") {
                 if (args.size() < 2) throw std::runtime_error(instruction.location() + ": missing movie filename");
                 refs.emplace_back("video", args[1]);
@@ -268,7 +273,14 @@ void ScriptRuntime::jump(const std::string& label) {
 }
 void ScriptRuntime::update(double seconds) {
     if (!std::isfinite(seconds) || seconds < 0) throw std::runtime_error("Invalid script delta time");
+    const bool voice_before = host_.voice_playing && host_.voice_playing();
     if (host_.tick) host_.tick(seconds);
+    if (state_ == ScriptState::message && dialogue_) {
+        dialogue_->update(seconds,voice_before);
+        const bool voice_now = host_.voice_playing && host_.voice_playing();
+        if (dialogue_->complete() && (dialogue_->automatic() || (!controls_enabled_ && !voice_now)))
+            state_ = ScriptState::running;
+    }
     if (state_ == ScriptState::waiting) {
         wait_remaining_ = std::max(0.0, wait_remaining_ - seconds);
         if (wait_remaining_ > 1e-9) return;
@@ -279,12 +291,22 @@ void ScriptRuntime::update(double seconds) {
         if (budget == 0) throw std::runtime_error(program_->id + ": instruction budget exhausted (possible infinite loop)");
         if (pc_ == program_->instructions.size()) { state_ = ScriptState::ended; break; }
         const auto instruction = program_->instructions.at(pc_++);
-        try { execute(instruction); }
+        try {
+            if (instruction.raw.find("[e]:.") != std::string::npos || instruction.raw.find("[j]:.") != std::string::npos)
+                diagnostic(instruction,"compatibility: colon after timing variant");
+            execute(instruction);
+        }
         catch (const std::exception& e) { throw std::runtime_error(instruction.location() + ": " + e.what()); }
     }
 }
 void ScriptRuntime::advance() {
-    if (state_ == ScriptState::message) state_ = ScriptState::running;
+    if (state_ != ScriptState::message || (!options_.text_preview && !controls_enabled_)) return;
+    if (dialogue_ && !dialogue_->complete()) {
+        dialogue_->update(0,host_.voice_playing && host_.voice_playing());
+        dialogue_->reveal();
+        return;
+    }
+    state_ = ScriptState::running;
 }
 void ScriptRuntime::choose(std::size_t index) {
     if (state_ != ScriptState::choices || index >= choices_.size()) throw std::runtime_error("Invalid choice index/state");
@@ -296,14 +318,25 @@ void ScriptRuntime::execute(const Instruction& instruction) {
     const auto& cmd = instruction.command;
     const auto& args = instruction.args;
     if (cmd == ".message") {
-        if (!options_.text_preview && ((!args[1].empty() && !host_.message) || args[3].find("\\w") != std::string::npos || args[3].find("\\v") != std::string::npos || args[3].find("\\a") != std::string::npos))
-            throw std::runtime_error("Voice/text timing is not implemented; use explicit --text-preview for proofreading");
+        if (!options_.text_preview && !args[1].empty() && !host_.message)
+            throw std::runtime_error("Voice output requires a script host; use --text-preview for proofreading");
+        std::optional<Dialogue> text;
+        if (!options_.text_preview) text.emplace(args[3],options_.characters_per_second);
+        if (text && text->waits_for_voice() && !host_.voice_playing)
+            throw std::runtime_error("Voice wait requires a voice-state callback");
         if (options_.text_preview && !args[1].empty()) diagnostic(instruction, "text-preview: message voice is not played");
-        if (args[3].find("\\w") != std::string::npos || args[3].find("\\v") != std::string::npos || args[3].find("\\a") != std::string::npos)
+        if (options_.text_preview && (args[3].find("\\w") != std::string::npos || args[3].find("\\v") != std::string::npos || args[3].find("\\a") != std::string::npos))
             diagnostic(instruction, "text-preview: timing escapes are displayed without original timing");
         message_ = Message{instruction.script, args[1], args[2], args[3], static_cast<int>(integer(args[0])), instruction.line};
         if (!options_.text_preview && host_.message) host_.message(*message_);
+        dialogue_ = std::move(text);
+        if (dialogue_) dialogue_->update(0,host_.voice_playing && host_.voice_playing());
+        ++message_serial_;
         state_ = ScriptState::message;
+    } else if (cmd == ".pragma") {
+        count(instruction,1);
+        if (args[0] != "enable_control" && args[0] != "disable_control") throw std::runtime_error("Unsupported pragma: " + args[0]);
+        if (!options_.text_preview) controls_enabled_ = args[0] == "enable_control";
     } else if (cmd == ".wait") {
         wait_remaining_ = static_cast<double>(integer(args[0])) / 100.0;
         if (wait_remaining_ > 0) state_ = ScriptState::waiting;
@@ -346,6 +379,9 @@ void ScriptRuntime::execute(const Instruction& instruction) {
     else if (host_.command && !options_.text_preview && host_.command(instruction)) { /* host owns the command and any asynchronous wait */ }
     else if (options_.text_preview) diagnostic(instruction, "text-preview: unimplemented command " + cmd);
     else throw std::runtime_error("Unimplemented command (strict mode): " + cmd);
+}
+std::string ScriptRuntime::displayed_text() const {
+    return dialogue_ ? dialogue_->text() : message_ ? message_display_text(message_->text) : "";
 }
 std::string message_display_text(const std::string& text) {
     std::string result;

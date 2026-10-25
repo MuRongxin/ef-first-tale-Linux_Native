@@ -22,7 +22,7 @@ private:
     Scene template_;
     Options options_;
     std::size_t reported_{};
-    std::string last_message_;
+    std::uint64_t last_message_{}, last_ready_{};
     ScriptState last_state_{ScriptState::running};
     const Layer* choice_layer() const;
 };

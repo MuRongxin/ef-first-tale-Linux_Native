@@ -41,9 +41,9 @@ def main():
     (out / "catalog.json").write_text(json.dumps(catalog))
     (out / "manifest.json").write_text(json.dumps(manifest))
     scripts = {
-        "start.sc": "#include common.sc\n.transition 0 * 100\n.stage * stage.png 0 0\n[e].wait 2\n[j].wait 10000\n.message 100 tone  键盘输入测试\n.vscroll 600 100\n.endScroll f\n.wait 10\n.select 继续:next 结束:stop\n.label next\n.chain second.sc\n.label stop\n.message 900   不应到达\n.end\n",
+        "start.sc": "#include common.sc\n.transition 0 * 100\n.stage * stage.png 0 0\n[e].wait 2\n[j].wait 10000\n.message 100 tone  键盘\\w输入\\v测试\n.vscroll 600 100\n.endScroll f\n.wait 10\n.select 继续:next 结束:stop\n.label next\n.chain second.sc\n.label stop\n.message 900   不应到达\n.end\n",
         "common.sc": ".set counter = 2\n",
-        "second.sc": ".if counter == 2 ok\n.message 999   不应到达\n.end\n.label ok\n.message 200   分支验证通过\n.end\n",
+        "second.sc": ".if counter == 2 ok\n.message 999   不应到达\n.end\n.label ok\n.message 201   自动推进\\a\n.message 200   分支验证通过\n.end\n",
     }
     for name, text in scripts.items():
         (out / name).write_text(text, encoding="utf-8")
@@ -86,10 +86,12 @@ def main():
                     output += chunk
                 if step == 0 and b"L0=100 " in output:
                     key("space"); step = 1
-                elif step == 1 and b"choices count=2" in output:
-                    key("1"); step = 2
+                elif step == 1 and b"message ready scr/start.sc L0=100" in output:
+                    key("space"); step = 2
+                elif step == 2 and b"choices count=2" in output:
+                    key("1"); step = 3
             output += process.stdout.read()
-            if process.returncode or step != 2 or b"message scr/second.sc L0=200 " not in output:
+            if process.returncode or step != 3 or b"message scr/second.sc L0=200 " not in output or b"message scr/second.sc L0=201 " not in output:
                 raise AssertionError(output.decode("utf-8", errors="replace"))
             with Image.open(out / "script.ppm") as screenshot:
                 pixels = screenshot.crop((65, 580, 500, 630)).convert("RGB").tobytes()
@@ -97,7 +99,7 @@ def main():
                     raise AssertionError("Script message glyphs did not render")
                 if screenshot.convert("RGB").getpixel((900, 300)) != (80, 120, 20):
                     raise AssertionError("Stage scroll did not reach the lower background")
-            print("Script window smoke PASS: stage, crossfade, voice output, scroll wait, actual Space/1 input, variant, include, wait, choice, branch, chain, CJK frame")
+            print("Script window smoke PASS: stage, crossfade, voice output, timed text/fast reveal/automatic message, scroll wait, actual Space/1 input, variant, include, wait, choice, branch, chain, CJK frame")
         finally:
             if process.poll() is None:
                 process.kill(); process.wait()

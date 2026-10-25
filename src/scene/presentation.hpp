@@ -1,6 +1,7 @@
 #pragma once
 #include "audio/mixer.hpp"
 #include "scene/scene.hpp"
+#include "scene/snow.hpp"
 #include "script/script.hpp"
 #include <optional>
 
@@ -18,6 +19,7 @@ public:
     [[nodiscard]] float progress() const;
     [[nodiscard]] std::uint64_t revision() const { return revision_; }
     [[nodiscard]] bool panel_visible() const { return panel_ != 0; }
+    [[nodiscard]] std::vector<Layer> effects() const { return snow_ ? snow_->layers() : std::vector<Layer>{}; }
     AudioMixer& mixer() { return mixer_; }
     void realtime_audio(bool enabled) { realtime_ = enabled; }
 private:
@@ -29,6 +31,7 @@ private:
     AudioMixer mixer_;
     std::array<std::string,4> playing_ids_;
     bool realtime_{};
+    std::optional<Snow> snow_;
     std::vector<Layer> previous_, current_;
     std::uint64_t revision_{};
     int speed_{9999}, panel_{3};

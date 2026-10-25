@@ -7,13 +7,14 @@ ScriptView::ScriptView(const Content& content, const Options& options)
     : presentation_(content), library_(content),
       runtime_([this, variant = options.variant](const std::string& id) { return library_.compile(id, variant); },
                [this](const std::string& current, const std::string& target) { return library_.resolve(current, target); },
-               options.script, {options.variant, options.text_preview, static_cast<std::size_t>(options.start_line)}),
+               options.script, {options.variant, options.text_preview, static_cast<std::size_t>(options.start_line), static_cast<double>(options.text_speed)}),
       template_(Scene::load(content, content.read_json(content.script_index()).at("view").get<std::string>())), options_(options) {
     if (!options.text_preview) runtime_.set_host({
         [this](const Instruction& i) { return presentation_.command(i); },
         [this](const Message& m) { presentation_.message(m); },
         [this](double seconds) { presentation_.update(seconds); },
-        [this] { return presentation_.busy(); }});
+        [this] { return presentation_.busy(); },
+        [this] { return presentation_.mixer().playing(AudioChannel::voice); }});
     if (options.start_line) std::cerr << "[script] Development start line: preceding scene/variables are not restored\n";
     if (const auto* choice = choice_layer(); !choice || choice->height <= 0)
         throw std::runtime_error("Script view requires a script_choice text slot with positive row height");
@@ -39,11 +40,15 @@ void ScriptView::update(double seconds) {
     runtime_.update(seconds);
     while (reported_ < runtime_.diagnostics().size()) std::cerr << "[script] " << runtime_.diagnostics()[reported_++] << '\n';
     if (const auto& message = runtime_.message()) {
-        const auto anchor = message->script + ':' + std::to_string(message->source_line);
+        const auto anchor = runtime_.message_serial();
         if (anchor != last_message_) {
             if (!options_.trace_messages)
                 std::cout << "message " << message->script << " L0=" << message->id << " source_line=" << message->source_line << std::endl;
             last_message_ = anchor;
+        }
+        if (!options_.trace_messages && runtime_.message_complete() && anchor != last_ready_) {
+            std::cout << "message ready " << message->script << " L0=" << message->id << std::endl;
+            last_ready_ = anchor;
         }
     }
     if (runtime_.state() != last_state_) {
@@ -80,8 +85,8 @@ Scene ScriptView::scene() const {
             layer.text = message ? message->name : "";
             if (layer.text.starts_with('#')) layer.text.erase(0, 1); // display only; original marker is preserved in Message
         } else if (layer.slot == "script_text") {
-            layer.text = message ? message_display_text(message->text) : "";
-            if (message && layer.text.empty()) layer.text = "（空文本消息，点击推进）";
+            layer.text = message ? runtime_.displayed_text() : "";
+            if (message && layer.text.empty() && runtime_.message_complete() && !runtime_.message_automatic() && runtime_.controls_enabled()) layer.text = "（空文本消息，点击推进）";
         } else if (layer.slot == "script_choice") {
             for (std::size_t i = 0; i < runtime_.choices().size(); ++i) {
                 auto row = layer;

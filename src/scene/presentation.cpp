@@ -51,6 +51,7 @@ void Presentation::update(double seconds) {
     if (!realtime_) mixer_.advance(seconds);
     mixer_.collect_finished();
     if (fading_) { elapsed_ += seconds; if (progress() >= 1) { fading_ = false; previous_.clear(); } }
+    if (snow_) { snow_->update(seconds); if (snow_->finished()) snow_.reset(); }
     if (!scroll_) return;
     auto& scroll = *scroll_;
     scroll.elapsed += seconds;
@@ -115,7 +116,9 @@ bool Presentation::command(const Instruction& instruction) {
         y = std::clamp(y,0.0f,std::max(0.0f,layer.height-600));
         const double dx = x+layer.x, dy = y+layer.y;
         const double major = std::abs(dx) >= std::abs(dy) ? dx : dy;
-        if (speed == 0 || (major != 0 && ((major > 0) != (speed > 0)))) throw std::runtime_error("Scroll speed must point toward the target");
+        // Two-axis scrolling derives each direction from the endpoints; its speed is a magnitude.
+        if (speed == 0 || (cmd == ".scroll" ? speed < 0 : major != 0 && ((major > 0) != (speed > 0))))
+            throw std::runtime_error("Invalid scroll speed or direction");
         scroll_ = Scroll{*background_,layer.x,layer.y,-x,-y,0,std::abs(static_cast<double>(speed))};
     } else if (cmd == ".endScroll") {
         count(instruction,1,1);
@@ -128,8 +131,14 @@ bool Presentation::command(const Instruction& instruction) {
         count(instruction,1,1); const int mode = number(args[0]);
         if (mode < 0 || mode > 5) throw std::runtime_error("Unsupported panel mode");
         panel_ = mode; // development overlay visibility; original panel variants await layout reconstruction
-    } else if (cmd == ".effect" && args.size() == 1 && args[0] == "*") {
-        // No persistent effect can be started by this host yet, so clearing it is idempotent.
+    } else if (cmd == ".effect") {
+        count(instruction,1,1);
+        if (args[0] == "*") snow_.reset();
+        else if (args[0] == "fadeout") { if (snow_) snow_->fade_out(); }
+        else if (args[0] == "Snow" || args[0] == "SnowH") {
+            std::array<Layer,3> sprites{image("snowS.png",r18),image("snowM.png",r18),image("snowL.png",r18)};
+            snow_.emplace(std::move(sprites),args[0] == "SnowH");
+        } else return false;
     } else if (cmd == ".playVoice") {
         count(instruction,1,1); voice(args[0],r18);
     } else if (cmd == ".playBGM" || cmd == ".playSE" || cmd == ".playSE2") {

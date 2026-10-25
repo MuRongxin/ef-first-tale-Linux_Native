@@ -17,7 +17,9 @@ add_library(ef_core
     src/data/content.cpp
     src/data/image.cpp
     src/scene/scene.cpp
+    src/scene/snow.cpp
     src/script/script.cpp
+    src/script/dialogue.cpp
     src/scene/presentation.cpp)
 target_include_directories(ef_core PUBLIC src)
 target_link_libraries(ef_core PUBLIC nlohmann_json::nlohmann_json PNG::PNG ${EF_WEBP_TARGET})
@@ -87,6 +89,14 @@ if(BUILD_TESTING)
     target_link_libraries(ef_core_tests PRIVATE ef_core)
     ef_compile_options(ef_core_tests)
     add_test(NAME core COMMAND ef_core_tests)
+    add_executable(ef_snow_tests tests/snow_tests.cpp)
+    target_link_libraries(ef_snow_tests PRIVATE ef_core)
+    ef_compile_options(ef_snow_tests)
+    add_test(NAME snow COMMAND ef_snow_tests)
+    add_executable(ef_dialogue_tests tests/dialogue_tests.cpp)
+    target_link_libraries(ef_dialogue_tests PRIVATE ef_core)
+    ef_compile_options(ef_dialogue_tests)
+    add_test(NAME dialogue COMMAND ef_dialogue_tests)
     add_executable(ef_script_tests tests/script_tests.cpp)
     target_link_libraries(ef_script_tests PRIVATE ef_core)
     ef_compile_options(ef_script_tests)

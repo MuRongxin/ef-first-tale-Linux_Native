@@ -11,6 +11,7 @@ struct Options {
     bool text_preview{}, audit_scripts{}, audit_resources{};
     int trace_messages{}, start_line{};
     bool silent{};
+    int text_speed{40};
 };
 int run(const Options& options);
 }

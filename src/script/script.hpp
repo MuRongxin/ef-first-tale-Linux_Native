@@ -1,5 +1,6 @@
 #pragma once
 #include "data/content.hpp"
+#include "script/dialogue.hpp"
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -44,12 +45,13 @@ struct Message {
     std::size_t source_line{};
 };
 struct Choice { std::string text, label; };
-struct ScriptOptions { char variant{'e'}; bool text_preview{}; std::size_t start_line{}; };
+struct ScriptOptions { char variant{'e'}; bool text_preview{}; std::size_t start_line{}; double characters_per_second{}; };
 struct ScriptHost {
     std::function<bool(const Instruction&)> command;
     std::function<void(const Message&)> message;
     std::function<void(double)> tick;
     std::function<bool()> busy;
+    std::function<bool()> voice_playing{};
 };
 class ScriptRuntime {
 public:
@@ -62,6 +64,11 @@ public:
     void set_host(ScriptHost host) { host_ = std::move(host); }
     [[nodiscard]] ScriptState state() const { return state_; }
     [[nodiscard]] const std::optional<Message>& message() const { return message_; }
+    [[nodiscard]] std::string displayed_text() const;
+    [[nodiscard]] bool message_automatic() const { return dialogue_ && dialogue_->automatic(); }
+    [[nodiscard]] bool message_complete() const { return !dialogue_ || dialogue_->complete(); }
+    [[nodiscard]] std::uint64_t message_serial() const { return message_serial_; }
+    [[nodiscard]] bool controls_enabled() const { return controls_enabled_; }
     [[nodiscard]] const std::vector<Choice>& choices() const { return choices_; }
     [[nodiscard]] const std::vector<std::string>& diagnostics() const { return diagnostics_; }
     [[nodiscard]] std::int64_t variable(const std::string& name) const;
@@ -78,6 +85,9 @@ private:
     ScriptState state_{ScriptState::running};
     double wait_remaining_{};
     std::optional<Message> message_;
+    std::optional<Dialogue> dialogue_;
+    std::uint64_t message_serial_{};
+    bool controls_enabled_{true};
     std::vector<Choice> choices_;
     std::map<std::string, std::int64_t> variables_, globals_;
     std::set<std::string> reported_;

@@ -57,12 +57,14 @@ int main() {
         rejects([&] { command(".hscroll 0 20\n"); });
         command(".hscroll 0 -20\n"); stage.update(1);
         require(stage.current()[0].x==-600,"negative scroll speed");
+        command(".scroll 0 0 100\n"); stage.update(2);
+        require(stage.current()[0].x==0 && stage.current()[0].y==0,"two-axis scroll derives direction from endpoints");
         command(".panel 0\n"); require(!stage.panel_visible(),"hidden panel");
         command(".panel 3\n"); require(stage.panel_visible(),"visible panel");
         rejects([&] { command(".transition 1 * 10\n"); });
         rejects([&] { command(".stage * wide.png 0 0 actor.png 400:1\n"); });
         rejects([&] { command(".stage * missing.png 0 0\n"); });
-        require(!command(".effect Snow 1 2\n"),"unsupported effects are not swallowed");
+        require(!command(".effect Rain\n"),"unsupported effects are not swallowed");
         command(".playSE tone t 0 0\n");
         require(stage.mixer().playing(AudioChannel::se),"SE zero fade is audible playback");
         stage.update(30); require(stage.mixer().playing(AudioChannel::se),"SE loop");

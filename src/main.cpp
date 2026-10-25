@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
                              "  --script ID           Run an imported script, e.g. scr/test.sc (strict by default)\n"
                              "  --variant e|j         Explicit timing variant; default e is a development choice\n"
                              "  --start-line N        Development entry at source line; does not restore preceding state\n"
+                             "  --text-speed N        Development text speed, 0=instant, default 40 characters/second\n"
                              "  --silent              Advance audio silently without opening a device\n"
                              "  --text-preview        Proofreading only: report and skip unimplemented commands\n"
                              "  --trace-messages N    Headless script check, require N messages; stops at choices\n"
@@ -50,6 +51,7 @@ int main(int argc, char** argv) {
                 options.variant = variant.front();
             }
             else if (arg == "--start-line") options.start_line = integer(1, 1000000);
+            else if (arg == "--text-speed") options.text_speed = integer(0,1000);
             else if (arg == "--silent") options.silent = true;
             else if (arg == "--text-preview") options.text_preview = true;
             else if (arg == "--audit-scripts") options.audit_scripts = true;

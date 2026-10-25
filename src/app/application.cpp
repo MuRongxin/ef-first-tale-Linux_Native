@@ -67,17 +67,22 @@ int run(const Options& options) {
     if (!options.script.empty()) script = std::make_unique<ScriptView>(content, options);
     if (options.trace_messages) {
         int messages = 0;
+        std::uint64_t last_message{};
         for (int operations = 0; messages < options.trace_messages; ++operations) {
             if (operations >= 100000) throw std::runtime_error("Trace operation budget exhausted");
             script->update(86400);
             const auto state = script->runtime().state();
-            if (state == ScriptState::message) {
+            if (script->runtime().message_serial() != last_message) {
+                last_message = script->runtime().message_serial();
                 const auto& message = *script->runtime().message();
                 std::cout << "message " << message.script << " L0=" << message.id << " source_line=" << message.source_line << '\n';
                 ++messages;
+                // Finish development typewriter text before requesting the next message.
+                script->advance();
                 script->advance();
             } else if (state == ScriptState::choices || state == ScriptState::ended)
                 throw std::runtime_error("Trace stopped before requested message count: choice or script end");
+            if (script->runtime().state() == ScriptState::message && script->runtime().message_complete()) script->advance();
         }
         std::cout << "Script trace PASS: " << messages << " messages\n";
         return 0;
@@ -188,6 +193,7 @@ int run(const Options& options) {
         if (script && !options.text_preview) {
             const auto& stage = script->presentation();
             renderer.stage(content, stage.previous(), stage.current(), stage.progress(), stage.revision(), tier);
+            for (const auto& layer : stage.effects()) renderer.image(content,layer,tier);
         }
         for (const auto& layer : scene.layers) {
             switch (layer.kind) {

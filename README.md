@@ -3,7 +3,7 @@
 基于 C++20、SDL3、OpenGL 3.3 和 FreeType 的原生框架。
 运行时读取离线准备的 `content/`，不依赖 Wine、原版 exe 或汉化 DLL。
 
-目前支持全量资源导入与引用检查、高清图像预览、矢量中文、剧本基础控制流和文字校阅。
+目前支持全量资源导入与引用检查、高清图像预览、FreeType 矢量中文、剧本基础控制流和文字校阅。
 严格模式已接入基础场景、转场、滚动与语音/BGM/音效；完整演出、原版 UI、视频播放、存档及 KTX2 缓存仍在开发中。
 
 ## 构建
@@ -67,6 +67,8 @@ python3 tools/prepare_content.py --all --game-root "$GAME" --jobs 4
 ./build/dev/ef_native --content content --audit-scripts
 ./build/dev/ef_native --content content --audit-resources
 ./build/dev/ef_native --content content --script scr/test.sc --text-preview
+# 严格执行已导入的开场
+./build/dev/ef_native --content content --script scr/000_01mugai.sc
 ```
 
 F11 切换无边框全屏，F10 最大化/还原，Esc 返回/退出。
@@ -77,9 +79,17 @@ R 可重载图像预览；剧本会话需重启以重新读取内容。
 `--text-preview` 明确报告并跳过尚未实现的演出/音频命令，只用于文字校阅。
 省略它则采用严格模式，遇到未支持命令会停止。基础场景支持背景裁切、默认居中落底的立绘、
 无掩码 type-0 转场、背景滚动与等待；音频支持独立 BGM/语音/SE/SE2 通道和整曲循环。
-目前的文字面板是开发叠层；特殊转场、立绘位置标志、雪花等特效、跨曲交叠淡化和文字 timing 转义仍会停止。
+文字支持逐字显示、点击快显、`\n` 换行、`\w` 暂停100ms、`\v` 等待语音结束、`\a` 在正文完成后自动推进。
+`--text-speed 40` 是开发速度（字符/秒），`0` 为瞬显；尚未校准原版速度配置。
+Snow/SnowH 使用内容包中的三种原版雪花精灵，支持效果淡出、清除和跨场景持续。
+`.pragma disable_control` 段落禁用手动推进，正文和语音结束后继续；enable_control 恢复操作。
+已显式兼容归档中 `[j]:.wait` / `[j]:.stage` 写法，执行时报告兼容诊断并保留源行号。
+目前的文字面板是开发叠层；特殊转场、立绘位置标志、其他特效和跨曲交叠淡化仍会停止。
+雪花运动与淡化已按原程序重建，随机种子采用固定值，尚未完成逐像素对照。
 `--silent` 不打开音频设备，继续推进音频时钟；无头 `--trace-messages N` 自动采用此行为。
 `--start-line N` 可从源文件行号开始验证片段，不恢复此前的变量、场景或特效。
+完整数据包的开场可用 `--script scr/000_01mugai.sc --trace-messages 428` 作无头检查；
+覆盖开场427条对白和下一章首条对白，两种变体均已通过。无头检查会快进时间，不能代替画面和音频保真对照。
 `--variant e|j` 显式选择变体，
 默认 `e` 是开发选择，尚未确认原汉化版的选择规则。
 

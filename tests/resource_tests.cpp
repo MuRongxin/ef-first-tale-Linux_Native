@@ -66,6 +66,11 @@ int main() {
         std::ofstream(temp.path / "script.sc", std::ios::app) << ".transition 0 missing.png 10\n";
         report = ScriptLibrary(content).audit_resources();
         require(report.at("missing") == 1 && report.at("issues")[0]["line"] == 4, "missing resource has physical source line");
+        std::ofstream(temp.path / "script.sc", std::ios::app) << ".effect Snow\n";
+        report = ScriptLibrary(content).audit_resources();
+        require(report.at("missing")==4 && report.at("references")==6,"snow's three implicit sprite dependencies are audited");
+        // Restore the fixture so later checks retain their original missing-file scope.
+        std::ofstream(temp.path / "script.sc") << ".message 10 voice-key #名字 对话里fake.png\n.message 20   旁白\n[j]:.stage * TEST.PNG 0 0\n.transition 0 missing.png 10\n";
         std::filesystem::remove(temp.path / "sound.ogg");
         require(ScriptLibrary(content).audit_resources().at("unavailable_files").size() == 1, "declared but missing package file");
 
