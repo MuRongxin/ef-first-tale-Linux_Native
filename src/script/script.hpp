@@ -31,6 +31,7 @@ public:
     [[nodiscard]] std::string resolve(const std::string& current, const std::string& target) const;
     [[nodiscard]] const std::map<std::string, std::string>& entries() const { return entries_; }
     [[nodiscard]] nlohmann::json audit() const;
+    [[nodiscard]] nlohmann::json audit_resources() const;
 private:
     void expand(const std::string& id, char variant, std::set<std::string>& stack, std::vector<Instruction>& out) const;
     const Content& content_;

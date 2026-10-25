@@ -53,6 +53,11 @@ private:
 }
 int run(const Options& options) {
     Content content(options.content);
+    if (options.audit_resources) {
+        const auto report = ScriptLibrary(content).audit_resources();
+        std::cout << report.dump(2) << '\n';
+        return report.at("missing") == 0 && report.at("ambiguous") == 0 && report.at("unavailable_files").empty() ? 0 : 2;
+    }
     if (options.audit_scripts) {
         std::cout << ScriptLibrary(content).audit().dump(2) << '\n';
         return 0;

@@ -19,15 +19,17 @@ def transcode(data: bytes, encoding: str = "gbk") -> bytes:
     return text.encode("utf-8")
 
 
-def import_scripts(project: Path, game: Path, out: Path, encoding: str) -> dict:
+def import_scripts(project: Path, game: Path, out: Path, encoding: str, *, publish=True) -> dict:
     project, game, out = project.resolve(), game.resolve(), out.resolve()
     if not out.is_relative_to(project) or out == project or out.is_relative_to(game):
         raise ValueError("输出必须在工程子目录，不能写入原游戏目录")
     for protected in ("assets", "src", "docs", "tools", "tests", "examples", ".git"):
         if out.is_relative_to(project / protected):
             raise ValueError("输出不能覆盖工程源文件")
-    if not (out / "manifest.json").is_file():
+    if publish and not (out / "manifest.json").is_file():
         raise ValueError("请先运行 tools/prepare_content.py 准备 content 包")
+    if publish and "resources" in json.loads((out / "manifest.json").read_text()):
+        raise ValueError("全量包请通过 prepare_content.py --all 原子更新，避免剧本与资源目录不同步")
     scripts_dir = safe_path(out, "scripts")
     scripts_dir.mkdir(exist_ok=True)
     blobs = safe_path(out, "blobs")
@@ -67,15 +69,16 @@ def import_scripts(project: Path, game: Path, out: Path, encoding: str) -> dict:
     view_path = f"blobs/{hashlib.sha256(view_data).hexdigest()}.script.scene.json"
     write_json(safe_path(out, view_path), view)
     index["view"] = view_path
-    write_json(safe_path(out, "scripts/index.json"), index)
-    print(f"已严格转码并导入 {len(index['scripts'])} 个脚本：{out / 'scripts/index.json'}")
+    if publish:
+        write_json(safe_path(out, "scripts/index.json"), index)
+    print(f"已严格转码并导入 {len(index['scripts'])} 个脚本", flush=True)
     return index
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-root", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--game-root", type=Path, default=Path("/home/lrxin/Downloads/ef - the first tale"))
+    parser.add_argument("--game-root", type=Path, required=True, help="只读的原版游戏目录")
     parser.add_argument("--out", type=Path, default=Path("content"))
     parser.add_argument("--encoding", choices=("gbk", "cp932"), default="gbk")
     args = parser.parse_args()

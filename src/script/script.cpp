@@ -103,7 +103,7 @@ std::vector<Instruction> parse_script(std::string_view text, const std::string& 
     return output;
 }
 ScriptLibrary::ScriptLibrary(const Content& content) : content_(content) {
-    const auto index = content.read_json("scripts/index.json");
+    const auto index = content.read_json(content.script_index());
     if (index.at("version") != 1 || index.at("encoding") != "utf-8" || !index.at("scripts").is_object())
         throw std::runtime_error("Unsupported script index");
     for (const auto& [id, entry] : index.at("scripts").items()) {
@@ -185,6 +185,62 @@ nlohmann::json ScriptLibrary::audit() const {
     report["commands"] = commands;
     report["unsupported"] = unsupported;
     return report;
+}
+nlohmann::json ScriptLibrary::audit_resources() const {
+    if (!content_.has_resource_catalog()) throw std::runtime_error("No resource catalog; run tools/prepare_content.py --all --game-root PATH");
+    nlohmann::json issues = nlohmann::json::array(), unavailable = nlohmann::json::array();
+    std::map<std::string, std::size_t> counts;
+    for (const auto& [id, resource] : content_.resources()) {
+        ++counts[resource.kind];
+        const auto check = [&](const std::string& path) {
+            if (!std::filesystem::is_regular_file(content_.resolve(path))) unavailable.push_back({{"id", id}, {"path", path}});
+        };
+        if (resource.kind == "image") {
+            for (const auto& [tier, variant] : content_.asset(id).variants) { (void)tier; check(variant.path); }
+        } else check(resource.path);
+    }
+    std::size_t references{}, missing{}, ambiguous{};
+    std::set<std::pair<std::string, std::string>> unique;
+    for (const auto& [id, path] : entries_) {
+        (void)path;
+        for (const auto& instruction : parse(id)) {
+            const auto& cmd = instruction.command;
+            const auto& args = instruction.args;
+            if (cmd == "<unparsed>") continue;
+            std::vector<std::pair<std::string, std::string>> refs;
+            if (cmd == ".message") refs.emplace_back("voice", args[1]);
+            else if (cmd == ".playBGM" || cmd == ".playSE" || cmd == ".playSE2" || cmd == ".playVoice" || cmd == ".chain" || cmd == "#include") {
+                if (args.empty()) throw std::runtime_error(instruction.location() + ": missing resource argument");
+                const std::string kind = cmd == ".playBGM" ? "bgm" :
+                    (cmd == ".playSE" || cmd == ".playSE2") ? "se" : cmd == ".playVoice" ? "voice" : "script";
+                refs.emplace_back(kind, args[0]);
+            } else if (cmd == ".movie") {
+                if (args.size() < 2) throw std::runtime_error(instruction.location() + ": missing movie filename");
+                refs.emplace_back("video", args[1]);
+            } else {
+                for (const auto& arg : args) {
+                    if (arg == "*" || arg.empty()) continue;
+                    std::string name = arg;
+                    for (char& ch : name) if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch + ('a' - 'A'));
+                    if (name.ends_with(".png") || name.ends_with(".png-") || name.ends_with(".png.tmp")) refs.emplace_back("image", arg);
+                    else if (name.ends_with(".ani")) refs.emplace_back("animation", arg);
+                }
+            }
+            for (const auto& [kind, name] : refs) {
+                if (name.empty() || name == "*") continue;
+                ++references;
+                unique.emplace(kind, resource_name(name));
+                const auto match = content_.lookup_resource(kind, name, id.starts_with("r18_scr/"));
+                if (match.status == ResourceStatus::resolved) continue;
+                const bool absent = match.status == ResourceStatus::missing;
+                if (absent) ++missing; else ++ambiguous;
+                issues.push_back({{"script", id}, {"line", instruction.line}, {"variant", instruction.variant ? std::string(1, instruction.variant) : ""},
+                    {"command", cmd}, {"kind", kind}, {"name", name}, {"status", absent ? "missing" : "ambiguous"}, {"candidates", match.candidates}});
+            }
+        }
+    }
+    return {{"scripts", entries_.size()}, {"references", references}, {"unique_references", unique.size()},
+            {"missing", missing}, {"ambiguous", ambiguous}, {"issues", issues}, {"counts", counts}, {"unavailable_files", unavailable}};
 }
 ScriptRuntime::ScriptRuntime(Loader loader, Resolver resolver, std::string entry, ScriptOptions options)
     : loader_(std::move(loader)), resolver_(std::move(resolver)), options_(options), program_(loader_(entry)) {

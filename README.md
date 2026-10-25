@@ -3,19 +3,19 @@
 基于 C++20、SDL3、OpenGL 3.3 和 FreeType 的原生框架。
 运行时读取离线准备的 `content/`，不依赖 Wine、原版 exe 或汉化 DLL。
 
-目前支持高清图像预览、矢量中文、剧本基础控制流和文字校阅。
+目前支持全量资源导入与引用检查、高清图像预览、矢量中文、剧本基础控制流和文字校阅。
 原版演出、完整 UI、音视频播放、存档及 KTX2 缓存仍在开发中。
 
 ## 构建
 
-需要 CMake ≥3.24、C++20 编译器和 Ninja。Debian/Ubuntu 可安装：
+需要 CMake ≥3.24、C++20 编译器、Ninja 和 Python ≥3.11。Debian/Ubuntu 可安装：
 
 ```bash
 sudo apt-get install build-essential cmake ninja-build pkg-config \
-    libpng-dev libfreetype-dev libglew-dev libgl1-mesa-dev \
+    libpng-dev libfreetype-dev libglew-dev libgl1-mesa-dev libegl-dev \
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
     libwayland-dev libxkbcommon-dev libdecor-0-dev \
-    python3-pil python3-numpy python3-pycryptodome fontconfig fonts-noto-cjk
+    python3-pil python3-numpy python3-pycryptodome fontconfig fonts-noto-cjk ffmpeg
 cmake --preset dev
 cmake --build --preset dev
 ```
@@ -36,14 +36,26 @@ python3 tools/toc_scan.py --game-root "$GAME" \
 python3 tools/extract_assets.py --game-root "$GAME" \
     --out-dir assets/raw --manifest-dir assets/manifest --jobs 4 --verify-reference 3
 python3 tools/build_image_inventory.py --project-root . --jobs 4
-python3 tools/prepare_content.py
-python3 tools/import_scripts.py --game-root "$GAME"
 ```
 
 已有的高清 WebP 可以放在 `assets/hd/<tag>_4x/` 和 `<tag>_8x/`，
-保留归档内相对路径并替换扩展名，然后重新运行 `prepare_content.py`。
-该工具只导入少量预览素材，可用重复的 `--image tag/name.png` 指定图片。
-默认带原始图像回退；`--hd-only` 要求选中图片已具备 4× 版本。
+保留归档内相对路径并替换扩展名；超宽图可使用 PNG。
+H.264 视频放在 `assets/hd/video/`，保留原视频文件名主干，容器使用 MKV/MP4。
+
+```bash
+python3 tools/prepare_content.py --all --game-root "$GAME" --jobs 4
+```
+
+全量模式导入图片、UTF-8 剧本、原版 OGG/WAV 与已有的高清视频。
+默认校验文件哈希、图像格式和尺寸；加 `--decode-images` 可完整解码全部图像。
+包内使用独立副本和内容哈希去重，失败时保留原入口清单；初次打包需要额外磁盘空间。
+导入报告由 `content/manifest.json` 的 `import_report` 字段指向，记录原图回退、缺失及同名歧义。
+补丁仅覆盖同一归档类别；不同类别的同名异图保留歧义，资源解析会拒绝猜测。
+
+只准备小型预览时，可省略 `--all`，用重复的 `--image tag/name.png` 指定图片，
+然后运行 `tools/import_scripts.py --game-root "$GAME"` 导入剧本。
+已有全量包须继续使用 `--all` 更新，避免预览命令覆盖资源索引。
+默认带原始图像回退；`--hd-only` 严格要求每张选中图片具备 4× 版本。
 中文字体默认从本机 Noto Sans CJK SC 复制，也可通过 `--font` 和 `--font-face` 指定。
 
 ## 运行
@@ -52,6 +64,7 @@ python3 tools/import_scripts.py --game-root "$GAME"
 ./build/dev/ef_native --content content
 ./build/dev/ef_native --content content --validate-content
 ./build/dev/ef_native --content content --audit-scripts
+./build/dev/ef_native --content content --audit-resources
 ./build/dev/ef_native --content content --script scr/test.sc --text-preview
 ```
 
@@ -64,6 +77,9 @@ R 可重载图像预览；剧本会话需重启以重新读取内容。
 省略它则采用严格模式，遇到未支持命令会停止。`--variant e|j` 显式选择变体，
 默认 `e` 是开发选择，尚未确认原汉化版的选择规则。
 
+`--audit-resources` 检查两种变体及补丁剧本的图片、语音、BGM、音效、视频、脚本引用和包内文件。
+存在缺失、歧义或丢失文件时退出码为 2；导入成功不代表场景演出已经实现。
+
 ## 测试
 
 ```bash
@@ -73,6 +89,8 @@ ctest --preset dev
 sudo apt-get install xvfb xauth openbox x11-utils libxtst6
 xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/render_smoke.py
 xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/script_window_smoke.py
+SDL_VIDEO_FORCE_EGL=1 xvfb-run -a -s '-screen 0 1600x1200x24' \
+    python3 tests/render_smoke.py --out build/render-smoke-egl
 ```
 
 `src/` 是运行时源码，`tools/` 是离线工具，`examples/` 是开发场景，`tests/` 是自动验证。

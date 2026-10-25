@@ -8,7 +8,7 @@ struct Options {
     bool fullscreen{}, maximized{}, validate{}, smoke{};
     std::string script;
     char variant{'e'};
-    bool text_preview{}, audit_scripts{};
+    bool text_preview{}, audit_scripts{}, audit_resources{};
     int trace_messages{};
 };
 int run(const Options& options);

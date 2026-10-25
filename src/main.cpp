@@ -26,6 +26,7 @@ int main(int argc, char** argv) {
                 std::cout << "ef_native --content content [options]\n"
                              "  --validate-content    Decode every declared image and validate scene/font without a window\n"
                              "  --audit-scripts       Parse/compile all imported scripts (both e/j variants), print JSON\n"
+                             "  --audit-resources     Check all script image/audio/video references and package files; exit 2 for unresolved references\n"
                              "  --script ID           Run an imported script, e.g. scr/test.sc (strict by default)\n"
                              "  --variant e|j         Explicit timing variant; default e is a development choice\n"
                              "  --text-preview        Proofreading only: report and skip unimplemented commands\n"
@@ -48,6 +49,7 @@ int main(int argc, char** argv) {
             }
             else if (arg == "--text-preview") options.text_preview = true;
             else if (arg == "--audit-scripts") options.audit_scripts = true;
+            else if (arg == "--audit-resources") options.audit_resources = true;
             else if (arg == "--trace-messages") options.trace_messages = integer(1, 100000);
             else if (arg == "--screenshot") options.screenshot = value();
             else if (arg == "--width") options.width = integer(320, 16384);
@@ -64,9 +66,11 @@ int main(int argc, char** argv) {
         if (!options.screenshot.empty() && (!(options.frames || options.smoke) || options.validate))
             throw std::runtime_error("--screenshot requires --frames or --smoke");
         if ((options.text_preview || options.trace_messages) && options.script.empty()) throw std::runtime_error("Script options require --script ID");
-        if ((!options.script.empty() && (options.smoke || options.validate || options.audit_scripts)) ||
+        if ((!options.script.empty() && (options.smoke || options.validate || options.audit_scripts || options.audit_resources)) ||
             (options.trace_messages && (options.frames || !options.screenshot.empty())))
             throw std::runtime_error("Conflicting script/validation/window smoke options");
+        if ((options.audit_resources || options.audit_scripts) && (options.smoke || options.validate || options.frames || options.maximized || options.fullscreen || !options.screenshot.empty() || (options.audit_resources && options.audit_scripts)))
+            throw std::runtime_error("Audit options require a separate headless invocation");
         return ef::run(options);
     } catch (const std::exception& e) {
         std::cerr << "ef_native: " << e.what() << '\n';

@@ -3,8 +3,35 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
+#include <set>
 
 namespace ef {
+std::string resource_name(const std::string& name) {
+    std::string result = name;
+    for (char& ch : result) {
+        if (ch == '\\') ch = '/';
+        else if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch + ('a' - 'A'));
+    }
+    if (result.empty() || result.find('\0') != std::string::npos) throw std::runtime_error("Invalid resource name");
+    std::size_t start{};
+    while (true) {
+        const auto end = result.find('/', start);
+        const auto component = result.substr(start, end == std::string::npos ? end : end - start);
+        if (component.empty() || component == "." || component == "..") throw std::runtime_error("Invalid resource name: " + name);
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return result;
+}
+namespace {
+std::string image_alias(std::string name) {
+    for (const std::string suffix : {".png.tmp", ".png-"}) {
+        if (name.ends_with(suffix)) return name.replace(name.size() - suffix.size(), suffix.size(), ".png");
+    }
+    return name;
+}
+}
 Content::Content(const std::filesystem::path& root) : root_(std::filesystem::canonical(root)) {
     const auto doc = read_json("manifest.json");
     if (doc.at("version") != 1 || doc.at("design_size") != nlohmann::json::array({800, 600}))
@@ -46,6 +73,76 @@ Content::Content(const std::filesystem::path& root) : root_(std::filesystem::can
         if (asset.variants.empty()) throw std::runtime_error(id + ": no image variants");
         assets_.emplace(id, std::move(asset));
     }
+    script_index_ = doc.value("script_index", "scripts/index.json");
+    (void)resolve(script_index_);
+    if (doc.contains("resources")) {
+        has_resource_catalog_ = true;
+        const auto catalog = read_json(doc.at("resources").get<std::string>());
+        if (catalog.at("version") != 1 || !catalog.at("entries").is_object())
+            throw std::runtime_error("Unsupported resource catalog");
+        const std::map<std::string, std::set<std::string>> tags{
+            {"image", {"bg", "st", "sys", "r18_bg", "r18_st", "r18_sys"}},
+            {"script", {"scr", "r18_scr"}}, {"voice", {"voice", "r18_voice"}},
+            {"bgm", {"bgm"}}, {"se", {"se"}}, {"video", {"mov"}}};
+        for (const auto& [id, spec] : catalog.at("entries").items()) {
+            Resource item{id, spec.at("kind").get<std::string>(), spec.at("name").get<std::string>(),
+                          spec.at("tag").get<std::string>(), spec.value("path", ""), spec.at("source_sha256").get<std::string>()};
+            const auto accepted = tags.find(item.kind);
+            if (accepted == tags.end() || !accepted->second.contains(item.tag) || id != item.tag + '/' + item.name)
+                throw std::runtime_error("Invalid resource kind/tag/ID: " + id);
+            const auto normalized = resource_name(item.name);
+            if (item.source_sha256.size() != 64 || !std::all_of(item.source_sha256.begin(), item.source_sha256.end(), [](char ch) {
+                    return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+                })) throw std::runtime_error("Invalid resource SHA-256: " + id);
+            if (item.kind == "image") {
+                if (!assets_.contains(id) || doc.at("images").at(id).at("source_sha256") != item.source_sha256)
+                    throw std::runtime_error("Image/catalog mismatch: " + id);
+            } else (void)resolve(item.path);
+            resource_names_[{item.kind, normalized}].push_back(id);
+            resource_aliases_[{item.kind, item.kind == "image" ? image_alias(normalized) : normalized}].push_back(id);
+            resources_.emplace(id, std::move(item));
+        }
+    }
+}
+ResourceMatch Content::lookup_resource(const std::string& kind, const std::string& name, bool r18) const {
+    ResourceMatch result;
+    const auto normalized = resource_name(name);
+    const auto select = [&](const std::vector<std::string>& ids) {
+        ResourceMatch selected;
+        std::set<std::string> replaced;
+        if (r18) {
+            for (const auto& id : ids) {
+                const auto& tag = resources_.at(id).tag;
+                if (tag.starts_with("r18_")) replaced.insert(tag.substr(4));
+            }
+        }
+        std::set<std::string> hashes;
+        for (const auto& id : ids) {
+            const auto& item = resources_.at(id);
+            if ((!r18 && item.tag.starts_with("r18_")) || replaced.contains(item.tag)) continue;
+            selected.candidates.push_back(id);
+            hashes.insert(item.source_sha256);
+        }
+        if (!selected.candidates.empty()) selected.status = hashes.size() == 1 ? ResourceStatus::resolved : ResourceStatus::ambiguous;
+        return selected;
+    };
+    if (const auto exact = resource_names_.find({kind, normalized}); exact != resource_names_.end()) {
+        result = select(exact->second);
+        if (!result.candidates.empty()) return result;
+    }
+    if (const auto alias = resource_aliases_.find({kind, kind == "image" ? image_alias(normalized) : normalized}); alias != resource_aliases_.end())
+        result = select(alias->second);
+    return result;
+}
+const Resource& Content::resource(const std::string& kind, const std::string& name, bool r18) const {
+    const auto match = lookup_resource(kind, name, r18);
+    if (match.status == ResourceStatus::missing) throw std::runtime_error("Missing resource: " + kind + '/' + name);
+    if (match.status == ResourceStatus::ambiguous) {
+        std::string message = "Ambiguous resource: " + kind + '/' + name + "; candidates:";
+        for (const auto& id : match.candidates) message += ' ' + id;
+        throw std::runtime_error(message);
+    }
+    return resources_.at(match.candidates.front());
 }
 std::filesystem::path Content::resolve(const std::string& relative) const {
     const std::filesystem::path path(relative);

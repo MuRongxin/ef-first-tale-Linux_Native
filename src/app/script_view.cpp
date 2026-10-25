@@ -8,7 +8,7 @@ ScriptView::ScriptView(const Content& content, const Options& options)
       runtime_([this, variant = options.variant](const std::string& id) { return library_.compile(id, variant); },
                [this](const std::string& current, const std::string& target) { return library_.resolve(current, target); },
                options.script, {options.variant, options.text_preview}),
-      template_(Scene::load(content, content.read_json("scripts/index.json").at("view").get<std::string>())), options_(options) {
+      template_(Scene::load(content, content.read_json(content.script_index()).at("view").get<std::string>())), options_(options) {
     if (const auto* choice = choice_layer(); !choice || choice->height <= 0)
         throw std::runtime_error("Script view requires a script_choice text slot with positive row height");
     if (!options.text_preview) template_.title = "ef · 严格剧本执行（开发布局）";

@@ -79,6 +79,14 @@ class ContentImportTests(unittest.TestCase):
         for name in ("thumb/a.png", "thumb/a.png-", "thumb/a.png.tmp"):
             self.assertEqual(importer.hd_name(name), "thumb/a.webp")
 
+    def test_rejects_wrong_codec_despite_matching_extension_and_size(self):
+        self.run_import()
+        before = (self.out / "manifest.json").read_bytes()
+        Image.new("RGB", (8, 4)).save(self.project / "assets/hd/bg_4x/test.webp", "JPEG")
+        with self.assertRaisesRegex(ValueError, "PNG/WebP"):
+            self.run_import()
+        self.assertEqual((self.out / "manifest.json").read_bytes(), before)
+
     def test_script_encoding_before_escapes(self):
         # 0x81 0x5C is one GBK character, not a literal backslash.
         original = b'.message 100   ' + bytes([0x81, 0x5c]) + b'n\\n' + '中文'.encode('gbk') + b'\r\n'
