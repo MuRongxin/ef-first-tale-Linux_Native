@@ -88,19 +88,65 @@ int run(const Options& options) {
         std::cout << "Script trace PASS: " << messages << " messages\n";
         return 0;
     }
+    const auto font_config=options.font_config.empty() ? default_font_config() : options.font_config;
+    FontSettings font_settings;
+    try { font_settings=load_font_settings(font_config); }
+    catch (const std::exception& e) { std::cerr << "[font] Cannot read preferences; using defaults: " << e.what() << '\n'; }
+    if (options.default_font) font_settings={};
+    if (options.font_file) { font_settings.file=*options.font_file; font_settings.face=0; }
+    if (options.font_face) font_settings.face=*options.font_face;
+    if (options.font_percent) font_settings.scale=static_cast<float>(*options.font_percent)/100;
+    font_settings.validate();
+    const bool font_override=options.default_font || options.font_file || options.font_face || options.font_percent;
+    auto create_font=[&]() {
+        try { return std::make_unique<Font>(content,font_settings); }
+        catch (const std::exception& e) {
+            if (font_override || font_settings.file.empty()) throw;
+            std::cerr << "[font] Saved font unavailable; using packaged font: " << e.what() << '\n';
+            font_settings.file.clear(); font_settings.face=0;
+            return std::make_unique<Font>(content,font_settings);
+        }
+    };
     auto scene = script ? script->scene() : Scene::load(content);
     if (options.validate) {
         content.validate_images();
-        Font font(content);
-        font.validate(scene);
+        auto font=create_font();
+        font->validate(scene);
         std::cout << "Content validation PASS: " << content.assets().size() << " images, " << scene.layers.size() << " layers\n";
         return 0;
     }
     Window window(options);
     Renderer renderer;
     // Declared after the GL context: all glyph/texture destructors run before it.
-    auto font = std::make_unique<Font>(content);
+    auto font = create_font();
     font->validate(scene);
+    auto persist_font=[&]() {
+        try { save_font_settings(font_config,font_settings); return true; }
+        catch (const std::exception& e) { std::cerr << "[font] Preview active but preferences were not saved: " << e.what() << '\n'; return false; }
+    };
+    if (font_override) persist_font();
+    std::cout << "font=" << font->name() << " face=" << font_settings.face << " size=" << std::lround(font_settings.scale*100) << "%\n";
+    Uint64 font_notice_until{};
+    bool font_notice_error{}, font_notice_saved{true};
+    auto change_font=[&](const FontSettings& candidate) {
+        try {
+            auto replacement=std::make_unique<Font>(content,candidate);
+            replacement->validate(scene);
+            auto preview=scene;
+            replacement->style(preview);
+            replacement->fit_messages(preview,1);
+            const auto title=scene.title+" | "+replacement->name()+" | "+std::to_string(std::lround(candidate.scale*100))+"%";
+            checked(SDL_SetWindowTitle(window.handle,title.c_str()),"Font preview title");
+            font=std::move(replacement); font_settings=candidate;
+            font_notice_saved=persist_font(); font_notice_error=false;
+            std::cout << "font applied=" << font->name() << " face=" << font_settings.face << " size=" << std::lround(font_settings.scale*100) << "%\n";
+        } catch (const std::exception& e) {
+            font_notice_error=true;
+            std::cerr << "[font] Selection rejected; previous font retained: " << e.what() << '\n';
+        }
+        font_notice_until=SDL_GetTicks()+5000;
+    };
+    SDL_SetEventEnabled(SDL_EVENT_DROP_FILE,true);
     std::unique_ptr<AudioOutput> audio;
     if (script && !options.text_preview) {
         audio = std::make_unique<AudioOutput>(script->presentation().mixer(), !options.silent);
@@ -129,6 +175,11 @@ int run(const Options& options) {
                     if (point) script->click(*point);
                 }
             }
+            if (event.type==SDL_EVENT_DROP_FILE && event.drop.data) {
+                auto candidate=font_settings;
+                candidate.file=std::filesystem::absolute(event.drop.data); candidate.face=0;
+                change_font(candidate);
+            }
             if (event.type != SDL_EVENT_KEY_DOWN || event.key.repeat) continue;
             if (script) {
                 if (event.key.key == SDLK_SPACE || event.key.key == SDLK_RETURN) script->advance();
@@ -140,6 +191,19 @@ int run(const Options& options) {
                 if (flags & SDL_WINDOW_FULLSCREEN) checked(SDL_SetWindowFullscreen(window.handle, false), "Leave fullscreen");
                 else running = false;
                 break;
+            case SDLK_F6: {
+                if (font_settings.file.empty()) break;
+                auto candidate=font_settings;
+                candidate.face=static_cast<int>((candidate.face+1)%font->face_count());
+                change_font(candidate); break;
+            }
+            case SDLK_F7:
+            case SDLK_F8: {
+                auto candidate=font_settings;
+                candidate.scale=static_cast<float>(std::clamp(std::lround(candidate.scale*100)+(event.key.key==SDLK_F8 ? 5 : -5),75L,150L))/100;
+                change_font(candidate); break;
+            }
+            case SDLK_F9: change_font({}); break;
             case SDLK_F11:
                 checked(SDL_SetWindowFullscreen(window.handle, !(flags & SDL_WINDOW_FULLSCREEN)), "Toggle fullscreen");
                 break;
@@ -154,7 +218,7 @@ int run(const Options& options) {
                 try {
                     Content replacement(options.content);
                     auto replacement_scene = Scene::load(replacement);
-                    auto replacement_font = std::make_unique<Font>(replacement);
+                    auto replacement_font = std::make_unique<Font>(replacement,font_settings);
                     replacement_font->validate(replacement_scene);
                     content = std::move(replacement);
                     scene = std::move(replacement_scene);
@@ -190,14 +254,16 @@ int run(const Options& options) {
         const auto view = fit_viewport(width, height);
         if (view.width == 0 || view.height == 0 || (flags & SDL_WINDOW_MINIMIZED)) { SDL_Delay(20); continue; }
         if (audio && audio->failed()) throw std::runtime_error("Audio output callback failed");
-        font->fit_messages(scene,view.scale());
+        auto rendered_scene=scene;
+        font->style(rendered_scene);
+        font->fit_messages(rendered_scene,view.scale());
         renderer.begin(width, height, view, scene.background);
         if (script && !options.text_preview) {
             const auto& stage = script->presentation();
             renderer.stage(content, stage.previous(), stage.current(), stage.progress(), stage.revision(), tier);
             for (const auto& layer : stage.effects()) renderer.image(content,layer,tier);
         }
-        for (const auto& layer : scene.layers) {
+        for (const auto& layer : rendered_scene.layers) {
             switch (layer.kind) {
             case LayerKind::image: renderer.image(content, layer, tier); break;
             case LayerKind::rectangle: renderer.rectangle(layer); break;
@@ -215,6 +281,16 @@ int run(const Options& options) {
                 break;
             }
             }
+        }
+        if (SDL_GetTicks()<font_notice_until) {
+            Layer background; background.kind=LayerKind::rectangle;
+            background.x=10; background.y=10; background.width=780; background.height=64;
+            background.color={0,0,0,0.9f}; renderer.rectangle(background);
+            Layer notice; notice.kind=LayerKind::text; notice.x=20; notice.y=16; notice.width=760; notice.font_size=18;
+            notice.text=font_notice_error ? "字体无法使用，已保留之前的设置。" :
+                "字号 "+std::to_string(std::lround(font_settings.scale*100))+"%   字面 "+std::to_string(font_settings.face)+"   F6 切换字面   F7/F8 调整字号   F9 恢复默认";
+            notice.text+=font_notice_saved ? "\n可拖入 TTF / OTF / TTC 字体；有效设置自动保存。" : "\n当前预览已生效，但配置保存失败，请检查配置目录。";
+            font->draw(renderer,notice,view.scale());
         }
         ++frames;
         bool finished = options.frames > 0 && frames >= options.frames;

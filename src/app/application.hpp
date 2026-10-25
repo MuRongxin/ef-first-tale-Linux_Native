@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 #include <string>
+#include <optional>
 namespace ef {
 struct Options {
     std::filesystem::path content{"content"}, screenshot;
@@ -12,6 +13,10 @@ struct Options {
     int trace_messages{}, start_line{};
     bool silent{};
     int text_speed{40};
+    std::filesystem::path font_config;
+    std::optional<std::filesystem::path> font_file;
+    std::optional<int> font_face, font_percent;
+    bool default_font{};
 };
 int run(const Options& options);
 }

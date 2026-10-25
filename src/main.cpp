@@ -31,6 +31,11 @@ int main(int argc, char** argv) {
                              "  --variant e|j         Explicit timing variant; default e is a development choice\n"
                              "  --start-line N        Development entry at source line; does not restore preceding state\n"
                              "  --text-speed N        Development text speed, 0=instant, default 40 characters/second\n"
+                             "  --font FILE           Custom TTF/OTF/TTC; saved after successful window startup\n"
+                             "  --font-face N         Face index in a font collection (default 0)\n"
+                             "  --font-size N         Font size percentage (75..150), auto-fit to message regions\n"
+                             "  --font-default        Restore packaged font and default size\n"
+                             "  --font-config FILE    Override user font configuration path\n"
                              "  --silent              Advance audio silently without opening a device\n"
                              "  --text-preview        Proofreading only: report and skip unimplemented commands\n"
                              "  --trace-messages N    Headless script check, require N messages; stops at choices\n"
@@ -40,7 +45,8 @@ int main(int argc, char** argv) {
                              "  --frames N            Exit after N rendered frames\n"
                              "  --smoke               Check normal -> borderless -> restored tier transitions\n"
                              "  --screenshot FILE     Write final frame as PPM (requires --frames or --smoke)\n"
-                             "Keys: F11 borderless, F10 maximize/restore, R reload content, Esc leave fullscreen/exit.\n";
+                             "Keys: drop font file to preview; F6 next collection face; F7/F8 smaller/larger; F9 default.\n"
+                             "      F11 borderless, F10 maximize/restore, R reload content, Esc leave fullscreen/exit.\n";
                 return 0;
             }
             if (arg == "--content") options.content = value();
@@ -52,6 +58,11 @@ int main(int argc, char** argv) {
             }
             else if (arg == "--start-line") options.start_line = integer(1, 1000000);
             else if (arg == "--text-speed") options.text_speed = integer(0,1000);
+            else if (arg == "--font") options.font_file = std::filesystem::absolute(value());
+            else if (arg == "--font-face") options.font_face = integer(0,65535);
+            else if (arg == "--font-size") options.font_percent = integer(75,150);
+            else if (arg == "--font-config") options.font_config = value();
+            else if (arg == "--font-default") options.default_font = true;
             else if (arg == "--silent") options.silent = true;
             else if (arg == "--text-preview") options.text_preview = true;
             else if (arg == "--audit-scripts") options.audit_scripts = true;

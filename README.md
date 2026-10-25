@@ -15,7 +15,7 @@ sudo apt-get install build-essential cmake ninja-build pkg-config \
     libpng-dev libfreetype-dev libglew-dev libgl1-mesa-dev libegl-dev \
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
     libwayland-dev libxkbcommon-dev libdecor-0-dev \
-    python3-pil python3-numpy python3-pycryptodome fontconfig fonts-noto-cjk ffmpeg
+    python3-pil python3-numpy python3-pycryptodome fontconfig fonts-noto-cjk fonts-dejavu-core ffmpeg
 cmake --preset dev
 cmake --build --preset dev
 ```
@@ -96,6 +96,24 @@ python3 tools/import_scripts.py --refresh-ui --out content
 全屏文本按 `script + L0` 分组续写，保留段落、空行和姓名列；新 L0 或离开模式会清页。
 已覆盖原数据全部8段、35条全屏对白，两种变体均无排版溢出。显式分页控制与自动分页器尚未接入，过长页面会明确报错。
 目前仍需校准原版字体基线/描边和面板切换动画。
+
+运行时支持自定义矢量字体（TTF、OTF、TTC），无需重新导入资源：
+
+```bash
+build/dev/ef_native --content content --script scr/100_01.sc --silent \
+    --font "/绝对路径/自定义字体.ttc" --font-face 0 --font-size 110
+```
+
+也可直接把字体文件拖入游戏窗口即时应用。`F6` 切换集合中的字面，`F7` / `F8` 按 5% 调整字号
+（75%–150%），`F9` 恢复随包字体和默认字号；`--font-default` 提供相同的启动选项。
+更换字体不会推进当前对白。缺字逐字回退到随包中文字体，消息过长时会自动缩小以适配区域，
+因此实际字号可能低于设定值。字体仍按窗口物理像素光栅化，4×/8× 素材切换不影响字体选择。
+字体文件由用户自行提供，仅保存绝对路径和字面索引，不会复制进资源包。
+
+配置自动保存到 `$XDG_CONFIG_HOME/ef-native/font.json`（默认 `~/.config/ef-native/font.json`），
+可用 `--font-config FILE` 指定独立配置。已保存字体不可用或配置损坏时会提示并使用随包字体；
+运行中选择无效字体会保留当前设置。无头校验不写配置。
+
 特殊转场、立绘位置标志、其他特效和跨曲交叠淡化仍会停止。
 雪花运动与淡化已按原程序重建，随机种子采用固定值，尚未完成逐像素对照。
 `--silent` 不打开音频设备，继续推进音频时钟；无头 `--trace-messages N` 自动采用此行为。

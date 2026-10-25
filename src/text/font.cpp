@@ -6,22 +6,57 @@
 #include <stdexcept>
 
 namespace ef {
-Font::Font(const Content& content) {
-    if (FT_Init_FreeType(&library_)) throw std::runtime_error("FreeType initialization failed");
-    if (FT_New_Face(library_, content.resolve(content.font_path()).c_str(), content.font_face(), &face_)) {
-        FT_Done_FreeType(library_);
-        throw std::runtime_error("Cannot load content font: " + content.font_path());
+Font::Font(const Content& content,const FontSettings& settings) : faces_(content,settings),scale_(settings.scale) {}
+Font::~Font() = default;
+void Font::style(Scene& scene) const {
+    if (!faces_.customized() && scale_==1) return;
+    std::map<char32_t,float> advances;
+    for (auto& layer : scene.layers) if (layer.kind==LayerKind::text) {
+        layer.font_size*=scale_;
+        if (layer.line_height>0) layer.line_height=std::max(layer.line_height*scale_,layer.font_size*1.25f);
+        layer.letter_spacing*=scale_;
     }
-    if (FT_Select_Charmap(face_, FT_ENCODING_UNICODE)) {
-        FT_Done_Face(face_);
-        FT_Done_FreeType(library_);
-        throw std::runtime_error("Content font has no Unicode charmap");
+    Layer* named_body=nullptr;
+    float name_gap{};
+    for (auto& body : scene.layers) if (body.slot=="message_body" && !body.flow_body)
+        for (const auto& name : scene.layers) if (name.slot=="message_name" && body.y>name.y) {
+            named_body=&body; name_gap=body.y-name.y;
+        }
+    // Keep complete dialogue pages visible even when a user chooses a wider face.
+    // A shared reduction preserves body/name alignment and stable typewriter wrapping.
+    float reduction=1;
+    for (const auto& layer : scene.layers) {
+        if (layer.kind!=LayerKind::text || layer.text.empty() || !layer.kinsoku) continue;
+        auto fits=[&](float factor) {
+            const auto measure=[&](char32_t cp) {
+                if (const auto found=advances.find(cp); found!=advances.end()) return found->second*layer.font_size*factor;
+                auto face=faces_.for_character(cp);
+                if (FT_Load_Glyph(face,FT_Get_Char_Index(face,static_cast<FT_ULong>(cp)),FT_LOAD_NO_SCALE|FT_LOAD_NO_HINTING))
+                    throw std::runtime_error("Cannot measure custom font");
+                const auto advance=static_cast<float>(face->glyph->metrics.horiAdvance)/face->units_per_EM;
+                advances.emplace(cp,advance); return advance*layer.font_size*factor;
+            };
+            const float name_room=&layer==named_body ? std::max(0.0f,layer.line_height*factor-name_gap) : 0;
+            return !layout_text(layer.text,measure,{layer.width,layer.height+layer.upward_room-name_room,
+                layer.line_height*factor,layer.letter_spacing*factor}).overflow;
+        };
+        float factor=reduction;
+        while (!fits(factor) && factor>0.4f) factor=std::max(0.4f,factor-0.025f);
+        if (!fits(factor)) throw std::runtime_error("Custom font cannot fit message region");
+        reduction=std::min(reduction,factor);
+    }
+    for (auto& layer : scene.layers) if (layer.kind==LayerKind::text) {
+        layer.font_size*=reduction; layer.line_height*=reduction; layer.letter_spacing*=reduction;
+    }
+    if (named_body) {
+        const float extra=std::max(0.0f,named_body->line_height-name_gap);
+        named_body->y+=extra; named_body->height-=extra;
     }
 }
-Font::~Font() { FT_Done_Face(face_); FT_Done_FreeType(library_); }
 const Font::Glyph& Font::glyph(char32_t cp) {
     const auto key = std::make_pair(pixels_, cp);
     if (const auto it = glyphs_.find(key); it != glyphs_.end()) return it->second;
+    const auto face_=faces_.for_character(cp);
     const auto index = FT_Get_Char_Index(face_, static_cast<FT_ULong>(cp));
     if (!index) throw std::runtime_error("Content font is missing code point " + std::to_string(static_cast<unsigned>(cp)));
     if (FT_Load_Glyph(face_, index, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL)) throw std::runtime_error("FreeType glyph rasterization failed");
@@ -32,7 +67,7 @@ const Font::Glyph& Font::glyph(char32_t cp) {
     result.left = static_cast<float>(face_->glyph->bitmap_left);
     result.top = static_cast<float>(face_->glyph->bitmap_top);
     result.advance = static_cast<float>(face_->glyph->advance.x) / 64.0f;
-    result.index = index;
+    result.index = index; result.face=face_;
     if (bitmap.width && bitmap.rows) {
         if (bitmap.pixel_mode != FT_PIXEL_MODE_GRAY) throw std::runtime_error("Font must provide grayscale outline glyphs");
         Image image{static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows), {}};
@@ -56,7 +91,7 @@ void Font::fit_messages(Scene& scene,float display_scale) {
         if (!body.flow_body) continue;
         const auto requested=static_cast<unsigned>(std::clamp(std::lround(body.font_size*display_scale),1L,2048L));
         if (pixels_!=requested) {
-            if (FT_Set_Pixel_Sizes(face_,0,requested)) throw std::runtime_error("Cannot set font pixel size");
+            faces_.set_pixels(requested);
             pixels_=requested;
         }
         const auto advance=[&](char32_t cp) { return glyph(cp).em_advance*body.font_size; };
@@ -76,7 +111,7 @@ void Font::fit_messages(Scene& scene,float display_scale) {
         if (body.upward_room<=0) continue;
         const auto requested=static_cast<unsigned>(std::clamp(std::lround(body.font_size*display_scale),1L,2048L));
         if (pixels_!=requested) {
-            if (FT_Set_Pixel_Sizes(face_,0,requested)) throw std::runtime_error("Cannot set font pixel size");
+            faces_.set_pixels(requested);
             pixels_=requested;
         }
         const auto layout=layout_text(body.text,[&](char32_t cp) { return glyph(cp).em_advance*body.font_size; },
@@ -99,9 +134,10 @@ TextDrawResult Font::draw(Renderer& renderer, const Layer& layer, float display_
     const auto requested = static_cast<unsigned>(std::clamp(std::lround(layer.font_size * display_scale), 1L, 2048L));
     if (glyphs_.size() > 2048) glyphs_.clear();
     if (pixels_ != requested) {
-        if (FT_Set_Pixel_Sizes(face_, 0, requested)) throw std::runtime_error("Cannot set font pixel size");
+        faces_.set_pixels(requested);
         pixels_ = requested;
     }
+    const auto face_=faces_.primary();
     const float line_height = layer.line_height>0 ? layer.line_height : static_cast<float>(face_->size->metrics.height) / 64.0f / display_scale;
     const float ascender = static_cast<float>(face_->size->metrics.ascender) / 64.0f / display_scale;
     if (layer.kinsoku) {
@@ -128,15 +164,16 @@ TextDrawResult Font::draw(Renderer& renderer, const Layer& layer, float display_
     float pen_x = layer.x;
     float baseline = layer.y + ascender;
     FT_UInt previous{};
+    FT_Face previous_face{};
     std::size_t source_index{};
     for (const auto cp : decode_utf8(layer.text)) {
         const auto character=source_index++;
         if (cp == U'\r') continue;
         if (cp == U'\n') { pen_x = layer.x; baseline += line_height; previous = 0; continue; }
         const auto& item = glyph(cp);
-        if (previous && FT_HAS_KERNING(face_)) {
+        if (previous && previous_face==item.face && FT_HAS_KERNING(item.face)) {
             FT_Vector kern{};
-            FT_Get_Kerning(face_, previous, item.index, FT_KERNING_DEFAULT, &kern);
+            FT_Get_Kerning(item.face, previous, item.index, FT_KERNING_DEFAULT, &kern);
             pen_x += static_cast<float>(kern.x) / 64.0f / display_scale;
         }
         const float advance = item.advance / display_scale;
@@ -145,7 +182,7 @@ TextDrawResult Font::draw(Renderer& renderer, const Layer& layer, float display_
             renderer.quad(item.texture, pen_x + item.left / display_scale, baseline - item.top / display_scale,
                           item.width / display_scale, item.height / display_scale, layer.color);
         pen_x += advance;
-        previous = item.index;
+        previous = item.index; previous_face=item.face;
     }
     return {{pen_x,baseline-ascender},line_height,false};
 }
@@ -154,8 +191,7 @@ void Font::validate(const Scene& scene) const {
         if (layer.kind != LayerKind::text) continue;
         for (const auto cp : decode_utf8(layer.text)) {
             if (cp == U'\r' || cp == U'\n') continue;
-            if (!FT_Get_Char_Index(face_, static_cast<FT_ULong>(cp)))
-                throw std::runtime_error("Content font is missing code point " + std::to_string(static_cast<unsigned>(cp)));
+            (void)faces_.for_character(cp);
         }
     }
 }

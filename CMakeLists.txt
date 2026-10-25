@@ -12,6 +12,7 @@ include(CTest)
 include(cmake/Dependencies.cmake)
 
 add_library(ef_core
+    src/settings/font_settings.cpp
     src/core/display.cpp
     src/core/utf8.cpp
     src/data/content.cpp
@@ -50,17 +51,33 @@ if(EF_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(ef_stb_vorbis PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
 endif()
 
+find_package(Freetype QUIET)
+if(Freetype_FOUND)
+    add_library(ef_fonts src/text/font_faces.cpp)
+    target_link_libraries(ef_fonts PUBLIC ef_core Freetype::Freetype)
+    ef_compile_options(ef_fonts)
+    if(BUILD_TESTING)
+        add_executable(ef_font_faces_tests tests/font_faces_tests.cpp)
+        target_link_libraries(ef_font_faces_tests PRIVATE ef_fonts)
+        ef_compile_options(ef_font_faces_tests)
+    endif()
+endif()
+
 if(EF_BUILD_APP)
     add_library(ef_audio_output src/audio/output.cpp)
     target_link_libraries(ef_audio_output PUBLIC ef_audio PRIVATE SDL3::SDL3)
     ef_compile_options(ef_audio_output)
     add_executable(ef_native src/main.cpp src/app/application.cpp src/app/script_view.cpp src/render/renderer.cpp src/text/font.cpp)
-    target_link_libraries(ef_native PRIVATE ef_core ef_audio_output SDL3::SDL3 OpenGL::GL GLEW::GLEW Freetype::Freetype)
+    target_link_libraries(ef_native PRIVATE ef_core ef_fonts ef_audio_output SDL3::SDL3 OpenGL::GL GLEW::GLEW Freetype::Freetype)
     ef_compile_options(ef_native)
     install(TARGETS ef_native RUNTIME DESTINATION bin)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(ef_font_settings_tests tests/font_settings_tests.cpp)
+    target_link_libraries(ef_font_settings_tests PRIVATE ef_core)
+    ef_compile_options(ef_font_settings_tests)
+    add_test(NAME font_settings COMMAND ef_font_settings_tests)
     add_executable(ef_audio_tests tests/audio_tests.cpp)
     target_link_libraries(ef_audio_tests PRIVATE ef_audio)
     target_compile_definitions(ef_audio_tests PRIVATE EF_AUDIO_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/audio-tone.ogg")
@@ -121,6 +138,16 @@ if(BUILD_TESTING)
     add_test(NAME resources COMMAND ef_resource_tests)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+        if(Freetype_FOUND)
+            add_test(NAME font_faces COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/font_customization_smoke.py --faces-only
+                --faces-binary $<TARGET_FILE:ef_font_faces_tests>)
+        endif()
+        if(EF_BUILD_APP AND EF_XVFB_RUN)
+            add_test(NAME font_customization COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/font_customization_smoke.py --binary $<TARGET_FILE:ef_native>
+                --faces-binary $<TARGET_FILE:ef_font_faces_tests>)
+        endif()
         add_test(NAME content_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_prepare_content.py)
         add_test(NAME message_ui_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_message_ui_import.py)
         add_test(NAME content_package COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_package_content.py)
