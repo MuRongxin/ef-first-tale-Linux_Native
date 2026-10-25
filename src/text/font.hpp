@@ -4,18 +4,20 @@
 #include FT_FREETYPE_H
 #include <map>
 namespace ef {
+struct TextDrawResult { Point cursor{}; float line_height{}; bool overflow{}; };
 class Font {
 public:
     explicit Font(const Content& content);
     ~Font();
     Font(const Font&) = delete;
     Font& operator=(const Font&) = delete;
-    void draw(Renderer& renderer, const Layer& layer, float display_scale);
+    void fit_messages(Scene& scene,float display_scale);
+    TextDrawResult draw(Renderer& renderer, const Layer& layer, float display_scale);
     void validate(const Scene& scene) const;
 private:
     struct Glyph {
         Texture texture;
-        float width{}, height{}, left{}, top{}, advance{};
+        float width{}, height{}, left{}, top{}, advance{}, em_advance{};
         FT_UInt index{};
     };
     const Glyph& glyph(char32_t codepoint);

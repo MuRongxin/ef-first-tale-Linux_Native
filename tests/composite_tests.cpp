@@ -188,6 +188,12 @@ int main() {
             glViewport(0,0,big_width,big_height);
             rejects([&] { renderer.stage(content,previous,current,0.5f,6,AssetTier::x4); });
         }
+        auto cropped=image("old"); cropped.source=std::array<float,4>{0,1,2,1};
+        renderer.begin(window_width,window_height,view,{0,0,0,1});
+        renderer.stage(content,{}, {rectangle({0,0,0,1}),cropped},1,98,AssetTier::x4);
+        near(read(view,100,150),{0,128,0,255}); near(read(view,100,450),{0,128,0,255});
+        cropped.source=std::array<float,4>{0,2,2,1};
+        rejects([&] { renderer.stage(content,{}, {cropped},1,99,AssetTier::x4); });
         renderer.begin(window_width,window_height,view,{1,1,1,1});
         renderer.stage(content,previous,{},1,6,AssetTier::x4);
         near(read(view,600,150),{0,0,0,255},0);

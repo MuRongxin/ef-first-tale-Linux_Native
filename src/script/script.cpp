@@ -380,6 +380,9 @@ void ScriptRuntime::execute(const Instruction& instruction) {
     else if (options_.text_preview) diagnostic(instruction, "text-preview: unimplemented command " + cmd);
     else throw std::runtime_error("Unimplemented command (strict mode): " + cmd);
 }
+std::string ScriptRuntime::full_message_text() const {
+    return dialogue_ ? dialogue_->full_text() : message_ ? message_display_text(message_->text) : "";
+}
 std::string ScriptRuntime::displayed_text() const {
     return dialogue_ ? dialogue_->text() : message_ ? message_display_text(message_->text) : "";
 }

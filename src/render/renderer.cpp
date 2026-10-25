@@ -135,11 +135,12 @@ Renderer::Renderer() {
 layout(location = 0) in vec2 position;
 uniform vec4 rect;
 uniform int flip_y;
+uniform vec4 uv_rect;
 out vec2 uv;
 void main() {
     vec2 p = rect.xy + position * rect.zw;
     gl_Position = vec4(p.x / 400.0 - 1.0, 1.0 - p.y / 300.0, 0.0, 1.0);
-    uv = vec2(position.x, flip_y != 0 ? 1.0-position.y : position.y);
+    uv = uv_rect.xy + vec2(position.x, flip_y != 0 ? 1.0-position.y : position.y) * uv_rect.zw;
 })";
         constexpr const char* fragment_source = R"(#version 330 core
 in vec2 uv;
@@ -164,6 +165,7 @@ void main() { output_color = texture(image, uv) * color; }
         rect_uniform_ = glGetUniformLocation(program_, "rect");
         color_uniform_ = glGetUniformLocation(program_, "color");
         flip_uniform_ = glGetUniformLocation(program_, "flip_y");
+        uv_uniform_ = glGetUniformLocation(program_, "uv_rect");
         constexpr float vertices[] = {0,0, 1,0, 0,1, 0,1, 1,0, 1,1};
         glGenVertexArrays(1, &vao_);
         glGenBuffers(1, &vbo_);
@@ -202,7 +204,7 @@ void Renderer::begin(int width, int height, Viewport view, Color background) {
 void Renderer::quad(const Texture& texture, float x, float y, float w, float h, Color color) {
     quad_id(texture.id(), x, y, w, h, color, false);
 }
-void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y) {
+void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv) {
     glUseProgram(program_);
     glBindVertexArray(vao_);
     glActiveTexture(GL_TEXTURE0);
@@ -210,6 +212,7 @@ void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color
     glUniform4f(rect_uniform_, x, y, w, h);
     glUniform4fv(color_uniform_, 1, color.data());
     glUniform1i(flip_uniform_, flip_y ? 1 : 0);
+    glUniform4fv(uv_uniform_,1,uv.data());
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 void Renderer::rectangle(const Layer& layer) { quad(white_, layer.x, layer.y, layer.width, layer.height, layer.color); }
@@ -314,7 +317,17 @@ void Renderer::image(const Content& content, const Layer& layer, AssetTier tier)
             if (candidate.tier != static_cast<int>(tier)) std::cerr << "[asset fallback] " << layer.asset << " uses tier " << candidate.tier << '\n';
         }
         found->second.used = ++clock_;
-        quad(found->second.texture, layer.x, layer.y, layer.width, layer.height, layer.color);
+        std::array<float,4> uv{0,0,1,1};
+        if (layer.source) {
+            const auto& asset = content.asset(layer.asset);
+            const auto& source = *layer.source;
+            if (!std::all_of(source.begin(),source.end(),[](float n) { return std::isfinite(n); }) ||
+                source[0]<0 || source[1]<0 || source[2]<=0 || source[3]<=0 ||
+                source[0]+source[2]>static_cast<float>(asset.width) || source[1]+source[3]>static_cast<float>(asset.height))
+                throw std::runtime_error("Image atlas region outside design canvas");
+            uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
+        }
+        quad_id(found->second.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv);
         return;
     }
     throw std::runtime_error("No usable image variant for " + layer.asset);

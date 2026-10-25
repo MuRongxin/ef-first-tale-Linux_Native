@@ -1,6 +1,7 @@
 #include "scene/scene.hpp"
 #include "core/utf8.hpp"
 #include <cmath>
+#include <algorithm>
 #include <stdexcept>
 namespace ef {
 namespace {
@@ -38,6 +39,16 @@ Scene Scene::load(const Content& content, const std::string& path) {
             const auto& source = content.asset(layer.asset);
             layer.width = static_cast<float>(source.width);
             layer.height = static_cast<float>(source.height);
+            if (item.contains("source")) {
+                const auto region = item.at("source").get<std::array<float,4>>();
+                if (!std::all_of(region.begin(),region.end(),[](float n) { return std::isfinite(n); }) ||
+                    region[0]<0 || region[1]<0 || region[2]<=0 || region[3]<=0 ||
+                    region[0]+region[2]>static_cast<float>(source.width) || region[1]+region[3]>static_cast<float>(source.height))
+                    throw std::runtime_error("Invalid image atlas region");
+                layer.source=region; layer.width=region[2]; layer.height=region[3];
+            }
+            layer.width=number(item,"width",layer.width); layer.height=number(item,"height",layer.height);
+            if (layer.width<=0 || layer.height<=0) throw std::runtime_error("Invalid image dimensions");
         } else if (kind == "rect") {
             layer.kind = LayerKind::rectangle;
             layer.width = number(item, "width", 0);
@@ -50,6 +61,10 @@ Scene Scene::load(const Content& content, const std::string& path) {
             layer.font_size = number(item, "font_size", 24);
             layer.width = number(item, "width", 800 - layer.x);
             layer.height = number(item, "height", 0);
+            layer.line_height=number(item,"line_height",0);
+            layer.letter_spacing=number(item,"letter_spacing",0);
+            layer.kinsoku=item.value("kinsoku",false);
+            if (layer.height<0 || layer.line_height<0 || layer.letter_spacing<0) throw std::runtime_error("Invalid text layout metrics");
             if (layer.font_size <= 0 || layer.font_size > 256 || layer.width <= 0) throw std::runtime_error("Invalid text size");
         } else throw std::runtime_error("Unknown scene layer: " + kind);
         scene.layers.push_back(std::move(layer));

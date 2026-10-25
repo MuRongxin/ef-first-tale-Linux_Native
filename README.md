@@ -84,7 +84,17 @@ R 可重载图像预览；剧本会话需重启以重新读取内容。
 Snow/SnowH 使用内容包中的三种原版雪花精灵，支持效果淡出、清除和跨场景持续。
 `.pragma disable_control` 段落禁用手动推进，正文和语音结束后继续；enable_control 恢复操作。
 已显式兼容归档中 `[j]:.wait` / `[j]:.stage` 写法，执行时报告兼容诊断并保留源行号。
-目前的文字面板是开发叠层；特殊转场、立绘位置标志、其他特效和跨曲交叠淡化仍会停止。
+全量包已接入取证得到的普通消息窗与电影字幕布局，使用原版面板透明度和推进动画；
+中文按完整正文预排版后逐字揭示，支持标点禁则与长消息上移。字体按实际显示像素重新光栅化，缩放不改变逻辑换行。
+布局来自 `examples/message.ui.json`，导入后运行时只读 `content/`。已有包可仅更新布局：
+
+```bash
+python3 tools/import_scripts.py --refresh-ui --out content
+```
+
+更新后重启剧本预览。小型包缺少布局或资源目录时仍使用开发叠层。
+目前仍需校准原版字体基线/描边和面板切换动画；全屏文本的跨消息连续累积也尚未复刻。
+特殊转场、立绘位置标志、其他特效和跨曲交叠淡化仍会停止。
 雪花运动与淡化已按原程序重建，随机种子采用固定值，尚未完成逐像素对照。
 `--silent` 不打开音频设备，继续推进音频时钟；无头 `--trace-messages N` 自动采用此行为。
 `--start-line N` 可从源文件行号开始验证片段，不恢复此前的变量、场景或特效。
@@ -106,6 +116,7 @@ ctest --preset dev
 sudo apt-get install xvfb xauth openbox x11-utils libxtst6
 xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/render_smoke.py
 xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/script_window_smoke.py
+xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/message_ui_smoke.py
 SDL_VIDEO_FORCE_EGL=1 xvfb-run -a -s '-screen 0 1600x1200x24' \
     python3 tests/render_smoke.py --out build/render-smoke-egl
 ```

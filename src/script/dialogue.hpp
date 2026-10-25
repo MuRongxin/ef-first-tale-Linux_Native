@@ -16,6 +16,7 @@ public:
     // Reveal reachable text immediately. Fixed waits and a playing voice still block.
     // Before the first update, voice status is conservatively treated as playing.
     void reveal();
+    [[nodiscard]] const std::string& full_text() const { return full_text_; }
     [[nodiscard]] const std::string& text() const { return displayed_; }
     [[nodiscard]] bool complete() const;
     [[nodiscard]] bool waits_for_voice() const { return needs_voice_; }
@@ -24,7 +25,7 @@ private:
     enum class Kind { glyph, automatic, wait, voice };
     struct Token { Kind kind; std::size_t begin{}, length{}; };
     void advance(double seconds, bool immediate);
-    std::string source_, displayed_;
+    std::string source_, displayed_, full_text_;
     std::vector<Token> tokens_;
     std::size_t cursor_{};
     double seconds_per_character_{}, credit_{}, pause_{};

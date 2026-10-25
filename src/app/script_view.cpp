@@ -1,5 +1,7 @@
 #include "app/script_view.hpp"
 #include <iostream>
+#include <algorithm>
+#include "core/utf8.hpp"
 #include <stdexcept>
 
 namespace ef {
@@ -15,6 +17,10 @@ ScriptView::ScriptView(const Content& content, const Options& options)
         [this](double seconds) { presentation_.update(seconds); },
         [this] { return presentation_.busy(); },
         [this] { return presentation_.mixer().playing(AudioChannel::voice); }});
+    const auto index=content.read_json(content.script_index());
+    if (!options.text_preview && content.has_resource_catalog() && index.contains("message_ui"))
+        message_ui_.emplace(content,index.at("message_ui").get<std::string>());
+    if (!options.text_preview) std::cout << "message-ui=" << (message_ui_ ? "imported" : "development") << '\n';
     if (options.start_line) std::cerr << "[script] Development start line: preceding scene/variables are not restored\n";
     if (const auto* choice = choice_layer(); !choice || choice->height <= 0)
         throw std::runtime_error("Script view requires a script_choice text slot with positive row height");
@@ -38,6 +44,7 @@ const Layer* ScriptView::choice_layer() const {
 }
 void ScriptView::update(double seconds) {
     runtime_.update(seconds);
+    elapsed_+=seconds;
     while (reported_ < runtime_.diagnostics().size()) std::cerr << "[script] " << runtime_.diagnostics()[reported_++] << '\n';
     if (const auto& message = runtime_.message()) {
         const auto anchor = runtime_.message_serial();
@@ -49,6 +56,7 @@ void ScriptView::update(double seconds) {
         if (!options_.trace_messages && runtime_.message_complete() && anchor != last_ready_) {
             std::cout << "message ready " << message->script << " L0=" << message->id << std::endl;
             last_ready_ = anchor;
+            ready_started_=elapsed_;
         }
     }
     if (runtime_.state() != last_state_) {
@@ -67,6 +75,20 @@ void ScriptView::click(Point point) {
     choose(static_cast<std::size_t>((point.y - row->y) / row->height));
 }
 Scene ScriptView::scene() const {
+    if (message_ui_) {
+        auto result=message_ui_->scene(presentation_.panel_mode(),runtime_.message(),runtime_.full_message_text(),
+            decode_utf8(runtime_.displayed_text()).size(),runtime_.state()==ScriptState::message && runtime_.message_complete() && !runtime_.message_automatic() && runtime_.controls_enabled(),
+            std::max(0.0,elapsed_-ready_started_));
+        if (runtime_.state()==ScriptState::choices) {
+            const auto* row=choice_layer();
+            for (std::size_t i=0; row && i<runtime_.choices().size(); ++i) {
+                auto layer=*row; layer.y+=static_cast<float>(i)*layer.height;
+                layer.text=std::to_string(i+1)+". "+runtime_.choices()[i].text;
+                result.layers.push_back(std::move(layer));
+            }
+        }
+        return result;
+    }
     Scene result = template_;
     result.layers.clear();
     const auto& message = runtime_.message();
@@ -85,7 +107,8 @@ Scene ScriptView::scene() const {
             layer.text = message ? message->name : "";
             if (layer.text.starts_with('#')) layer.text.erase(0, 1); // display only; original marker is preserved in Message
         } else if (layer.slot == "script_text") {
-            layer.text = message ? runtime_.displayed_text() : "";
+            layer.text = message ? runtime_.full_message_text() : "";
+            layer.visible_characters=decode_utf8(runtime_.displayed_text()).size();
             if (message && layer.text.empty() && runtime_.message_complete() && !runtime_.message_automatic() && runtime_.controls_enabled()) layer.text = "（空文本消息，点击推进）";
         } else if (layer.slot == "script_choice") {
             for (std::size_t i = 0; i < runtime_.choices().size(); ++i) {

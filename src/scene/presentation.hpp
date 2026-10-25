@@ -18,6 +18,7 @@ public:
     [[nodiscard]] const std::vector<Layer>& current() const { return current_; }
     [[nodiscard]] float progress() const;
     [[nodiscard]] std::uint64_t revision() const { return revision_; }
+    [[nodiscard]] int panel_mode() const { return panel_; }
     [[nodiscard]] bool panel_visible() const { return panel_ != 0; }
     [[nodiscard]] std::vector<Layer> effects() const { return snow_ ? snow_->layers() : std::vector<Layer>{}; }
     AudioMixer& mixer() { return mixer_; }

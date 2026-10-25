@@ -3,6 +3,7 @@
 #include "script/script.hpp"
 #include "scene/scene.hpp"
 #include "scene/presentation.hpp"
+#include "scene/message_ui.hpp"
 namespace ef {
 class ScriptView {
 public:
@@ -20,6 +21,8 @@ private:
     ScriptLibrary library_;
     ScriptRuntime runtime_;
     Scene template_;
+    std::optional<MessageUI> message_ui_;
+    double elapsed_{}, ready_started_{};
     Options options_;
     std::size_t reported_{};
     std::uint64_t last_message_{}, last_ready_{};

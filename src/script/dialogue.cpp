@@ -44,6 +44,10 @@ Dialogue::Dialogue(std::string text, double characters_per_second) : source_(std
         }
     }
     displayed_.reserve(source_.size());
+    for (const auto& token : tokens_) if (token.kind==Kind::glyph) {
+        if (token.length) full_text_.append(source_,token.begin,token.length);
+        else full_text_+='\n';
+    }
 }
 bool Dialogue::complete() const { return cursor_ == tokens_.size() && pause_ == 0 && !voice_wait_; }
 void Dialogue::update(double seconds, bool voice_playing) {

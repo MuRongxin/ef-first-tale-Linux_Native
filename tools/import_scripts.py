@@ -19,6 +19,48 @@ def transcode(data: bytes, encoding: str = "gbk") -> bytes:
     return text.encode("utf-8")
 
 
+def import_message_ui(project: Path, out: Path, index: dict) -> None:
+    source = project / "examples/message.ui.json"
+    if not source.is_file():
+        return
+    document = json.loads(source.read_text(encoding="utf-8"))
+    if document.get("version") != 1 or document.get("design_size") != [800, 600]:
+        raise ValueError("不支持的消息窗布局版本")
+    encoded = (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    path = f"blobs/{hashlib.sha256(encoded).hexdigest()}.message.ui.json"
+    write_json(safe_path(out, path), document)
+    index["message_ui"] = path
+
+
+def refresh_message_ui(project: Path, out: Path) -> dict:
+    """只原子更新布局和脚本索引，不重新复制图像/音频/视频。"""
+    project, out = project.resolve(), out.resolve()
+    if not out.is_relative_to(project) or out == project or out.is_relative_to(project / ".git"):
+        raise ValueError("输出必须是工程内的 content 数据目录")
+    for protected in ("assets", "src", "docs", "tools", "tests", "examples"):
+        if out.is_relative_to(project / protected):
+            raise ValueError("输出不能覆盖工程源文件")
+    import fcntl
+    with safe_path(out, ".import.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        manifest = json.loads(safe_path(out, "manifest.json").read_text(encoding="utf-8"))
+        index = json.loads(safe_path(out, manifest.get("script_index", "scripts/index.json")).read_text(encoding="utf-8"))
+        source = project / "examples/message.ui.json"
+        ui = json.loads(source.read_text(encoding="utf-8"))
+        required = {ui["advance"]["asset"]}
+        for mode in ui["modes"].values():
+            required.update(image["asset"] for image in mode["images"])
+        missing = sorted(required - manifest["images"].keys())
+        if missing:
+            raise ValueError(f"消息窗资源缺失：{missing}")
+        import_message_ui(project, out, index)
+        encoded = (json.dumps(index, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        path = f"blobs/{hashlib.sha256(encoded).hexdigest()}.scripts.json"
+        write_json(safe_path(out, path), index)
+        manifest["script_index"] = path
+        write_json(safe_path(out, "manifest.json"), manifest)
+    return index
+
 def import_scripts(project: Path, game: Path, out: Path, encoding: str, *, publish=True) -> dict:
     project, game, out = project.resolve(), game.resolve(), out.resolve()
     if not out.is_relative_to(project) or out == project or out.is_relative_to(game):
@@ -69,6 +111,7 @@ def import_scripts(project: Path, game: Path, out: Path, encoding: str, *, publi
     view_path = f"blobs/{hashlib.sha256(view_data).hexdigest()}.script.scene.json"
     write_json(safe_path(out, view_path), view)
     index["view"] = view_path
+    import_message_ui(project, out, index)
     if publish:
         write_json(safe_path(out, "scripts/index.json"), index)
     print(f"已严格转码并导入 {len(index['scripts'])} 个脚本", flush=True)
@@ -78,12 +121,19 @@ def import_scripts(project: Path, game: Path, out: Path, encoding: str, *, publi
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-root", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--game-root", type=Path, required=True, help="只读的原版游戏目录")
+    parser.add_argument("--game-root", type=Path, help="只读的原版游戏目录")
     parser.add_argument("--out", type=Path, default=Path("content"))
     parser.add_argument("--encoding", choices=("gbk", "cp932"), default="gbk")
+    parser.add_argument("--refresh-ui", action="store_true", help="仅更新已有包的消息窗布局，不读取原游戏或重打包资源")
     args = parser.parse_args()
     try:
-        import_scripts(args.project_root, args.game_root, args.project_root / args.out, args.encoding)
+        if args.refresh_ui:
+            refresh_message_ui(args.project_root, args.project_root / args.out)
+            print("消息窗布局已原子更新", flush=True)
+        elif args.game_root:
+            import_scripts(args.project_root, args.game_root, args.project_root / args.out, args.encoding)
+        else:
+            parser.error("导入剧本需要 --game-root；已有资源包可用 --refresh-ui")
     except (ValueError, OSError) as error:
         parser.exit(1, f"import_scripts: {error}\n")
 

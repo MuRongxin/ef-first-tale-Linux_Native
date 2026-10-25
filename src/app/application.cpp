@@ -8,6 +8,7 @@
 #include "text/font.hpp"
 #include <SDL3/SDL.h>
 #include <memory>
+#include <cmath>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
@@ -189,6 +190,7 @@ int run(const Options& options) {
         const auto view = fit_viewport(width, height);
         if (view.width == 0 || view.height == 0 || (flags & SDL_WINDOW_MINIMIZED)) { SDL_Delay(20); continue; }
         if (audio && audio->failed()) throw std::runtime_error("Audio output callback failed");
+        font->fit_messages(scene,view.scale());
         renderer.begin(width, height, view, scene.background);
         if (script && !options.text_preview) {
             const auto& stage = script->presentation();
@@ -199,7 +201,19 @@ int run(const Options& options) {
             switch (layer.kind) {
             case LayerKind::image: renderer.image(content, layer, tier); break;
             case LayerKind::rectangle: renderer.rectangle(layer); break;
-            case LayerKind::text: font->draw(renderer, layer, view.scale()); break;
+            case LayerKind::text: {
+                const auto drawn=font->draw(renderer,layer,view.scale());
+                if (layer.advance_marker) {
+                    const auto& marker=*layer.advance_marker;
+                    Layer sprite; sprite.kind=LayerKind::image; sprite.asset=marker.asset;
+                    sprite.width=sprite.height=static_cast<float>(marker.frame_size);
+                    sprite.x=std::floor((drawn.cursor.x+5)/2)*2;
+                    sprite.y=drawn.cursor.y+drawn.line_height-sprite.height+2;
+                    sprite.source=std::array<float,4>{static_cast<float>(marker.frame*marker.frame_size),0,sprite.width,sprite.height};
+                    renderer.image(content,sprite,tier);
+                }
+                break;
+            }
             }
         }
         ++frames;

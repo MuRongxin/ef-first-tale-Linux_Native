@@ -65,6 +65,7 @@ public:
     [[nodiscard]] ScriptState state() const { return state_; }
     [[nodiscard]] const std::optional<Message>& message() const { return message_; }
     [[nodiscard]] std::string displayed_text() const;
+    [[nodiscard]] std::string full_message_text() const;
     [[nodiscard]] bool message_automatic() const { return dialogue_ && dialogue_->automatic(); }
     [[nodiscard]] bool message_complete() const { return !dialogue_ || dialogue_->complete(); }
     [[nodiscard]] std::uint64_t message_serial() const { return message_serial_; }

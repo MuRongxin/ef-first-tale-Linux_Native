@@ -17,6 +17,8 @@ add_library(ef_core
     src/data/content.cpp
     src/data/image.cpp
     src/scene/scene.cpp
+    src/scene/message_ui.cpp
+    src/text/layout.cpp
     src/scene/snow.cpp
     src/script/script.cpp
     src/script/dialogue.cpp
@@ -89,6 +91,18 @@ if(BUILD_TESTING)
     target_link_libraries(ef_core_tests PRIVATE ef_core)
     ef_compile_options(ef_core_tests)
     add_test(NAME core COMMAND ef_core_tests)
+    find_package(Freetype QUIET)
+    if(Freetype_FOUND)
+        add_executable(ef_message_ui_tests tests/message_ui_tests.cpp)
+        target_link_libraries(ef_message_ui_tests PRIVATE ef_core Freetype::Freetype)
+        target_compile_definitions(ef_message_ui_tests PRIVATE EF_UI_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/examples/message.ui.json")
+        ef_compile_options(ef_message_ui_tests)
+        add_test(NAME message_ui COMMAND ef_message_ui_tests)
+    endif()
+    add_executable(ef_text_layout_tests tests/text_layout_tests.cpp)
+    target_link_libraries(ef_text_layout_tests PRIVATE ef_core)
+    ef_compile_options(ef_text_layout_tests)
+    add_test(NAME text_layout COMMAND ef_text_layout_tests)
     add_executable(ef_snow_tests tests/snow_tests.cpp)
     target_link_libraries(ef_snow_tests PRIVATE ef_core)
     ef_compile_options(ef_snow_tests)
@@ -108,6 +122,7 @@ if(BUILD_TESTING)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
         add_test(NAME content_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_prepare_content.py)
+        add_test(NAME message_ui_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_message_ui_import.py)
         add_test(NAME content_package COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_package_content.py)
     endif()
 endif()

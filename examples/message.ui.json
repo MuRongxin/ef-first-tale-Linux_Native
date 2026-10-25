@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "design_size": [
+    800,
+    600
+  ],
+  "font_size": 22,
+  "line_height": 32,
+  "letter_spacing": 2,
+  "color": [
+    1,
+    1,
+    1,
+    1
+  ],
+  "advance": {
+    "asset": "sys/pauseAnime.png",
+    "frame_size": 22,
+    "frame_ms": 100
+  },
+  "modes": {
+    "1": {
+      "images": [
+        {
+          "asset": "sys/msgPanel.png",
+          "x": 0,
+          "y": 417
+        }
+      ],
+      "name": [
+        38,
+        456,
+        726,
+        144
+      ],
+      "body": [
+        38,
+        456,
+        748,
+        144
+      ],
+      "name_newline": true,
+      "name_prefix": "« ",
+      "name_suffix": " »",
+      "upward_room": 64
+    },
+    "2": {
+      "images": [
+        {
+          "asset": "sys/fullPanel.png",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "name": [
+        15,
+        12,
+        110,
+        576
+      ],
+      "body": [
+        125,
+        12,
+        660,
+        576
+      ]
+    },
+    "3": {
+      "images": [
+        {
+          "asset": "sys/BLACK800x75.png",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "asset": "sys/BLACK800x75.png",
+          "x": 0,
+          "y": 525
+        }
+      ],
+      "name": [
+        37,
+        530,
+        88,
+        70
+      ],
+      "body": [
+        125,
+        530,
+        638,
+        70
+      ]
+    }
+  }
+}

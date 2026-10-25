@@ -96,6 +96,8 @@ int main() {
         Dialogue limit(std::string(65536,'a'),0);
         limit.update(0,false);
         require(limit.complete(),"maximum token count terminates without an off-by-one budget failure");
+        Dialogue plain("前\\w中\\v后\\a\\n\\\\",10);
+        require(plain.text().empty() && plain.full_text()=="前中后\n\\","full plaintext remains available before reveal for stable layout");
         std::cout << "Dialogue tests PASS: Unicode clock, reveal barriers, fixed pauses, voice synchronization, automatic messages and bounds\n";
         return 0;
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

@@ -2,15 +2,23 @@
 #include "data/content.hpp"
 #include <array>
 #include <string>
+#include <optional>
+#include <limits>
 #include <vector>
 namespace ef {
 using Color = std::array<float, 4>;
 enum class LayerKind { image, rectangle, text };
+struct TextMarker { std::string asset; int frame_size{},frame{}; };
 struct Layer {
     LayerKind kind{};
     std::string asset, text, slot;
     float x{}, y{}, width{}, height{}, font_size{24};
     Color color{1, 1, 1, 1};
+    std::optional<std::array<float,4>> source; // image atlas region in design pixels
+    float line_height{}, letter_spacing{}, upward_room{};
+    bool kinsoku{};
+    std::optional<TextMarker> advance_marker;
+    std::size_t visible_characters{std::numeric_limits<std::size_t>::max()};
 };
 struct Scene {
     std::string title;
