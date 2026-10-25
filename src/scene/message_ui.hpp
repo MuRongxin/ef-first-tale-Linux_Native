@@ -6,6 +6,9 @@ namespace ef {
 class MessageUI {
 public:
     MessageUI(const Content& content,const std::string& path);
+    // Feed panel/message events before building a scene; rendering never appends text.
+    void set_mode(int mode);
+    void begin_message(int mode,const Message& message);
     [[nodiscard]] Scene scene(int mode,const std::optional<Message>& message,const std::string& text,
                               std::size_t visible,bool ready,double elapsed) const;
     [[nodiscard]] static std::string display_name(const std::string& raw);
@@ -19,5 +22,11 @@ private:
     std::map<int,Mode> modes_;
     std::string advance_asset_;
     int frame_size_{},frames_{},frame_ms_{};
+    int mode_{};
+    std::optional<Message> page_message_, active_message_;
+    std::string prefix_, current_text_;
+    std::size_t prefix_characters_{};
+    struct Label { std::string text; std::size_t byte_offset{}; };
+    std::vector<Label> page_labels_;
 };
 }

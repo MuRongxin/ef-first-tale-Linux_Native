@@ -12,8 +12,15 @@ ScriptView::ScriptView(const Content& content, const Options& options)
                options.script, {options.variant, options.text_preview, static_cast<std::size_t>(options.start_line), static_cast<double>(options.text_speed)}),
       template_(Scene::load(content, content.read_json(content.script_index()).at("view").get<std::string>())), options_(options) {
     if (!options.text_preview) runtime_.set_host({
-        [this](const Instruction& i) { return presentation_.command(i); },
-        [this](const Message& m) { presentation_.message(m); },
+        [this](const Instruction& i) {
+            const bool handled=presentation_.command(i);
+            if (handled && i.command==".panel" && message_ui_) message_ui_->set_mode(presentation_.panel_mode());
+            return handled;
+        },
+        [this](const Message& m) {
+            presentation_.message(m);
+            if (message_ui_) message_ui_->begin_message(presentation_.panel_mode(),m);
+        },
         [this](double seconds) { presentation_.update(seconds); },
         [this] { return presentation_.busy(); },
         [this] { return presentation_.mixer().playing(AudioChannel::voice); }});

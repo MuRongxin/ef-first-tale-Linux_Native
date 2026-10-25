@@ -53,6 +53,26 @@ const Font::Glyph& Font::glyph(char32_t cp) {
 }
 void Font::fit_messages(Scene& scene,float display_scale) {
     for (auto& body : scene.layers) {
+        if (!body.flow_body) continue;
+        const auto requested=static_cast<unsigned>(std::clamp(std::lround(body.font_size*display_scale),1L,2048L));
+        if (pixels_!=requested) {
+            if (FT_Set_Pixel_Sizes(face_,0,requested)) throw std::runtime_error("Cannot set font pixel size");
+            pixels_=requested;
+        }
+        const auto advance=[&](char32_t cp) { return glyph(cp).em_advance*body.font_size; };
+        const TextLayoutOptions bounds{body.width,body.height,body.line_height,body.letter_spacing};
+        if (layout_text(body.text,advance,bounds).overflow) throw std::runtime_error("Full-screen message page exceeds its text region");
+        for (auto& name : scene.layers) if (name.flow_anchor) {
+            if (*name.flow_anchor>body.text.size()) throw std::runtime_error("Speaker anchor outside full-screen text");
+            const auto prefix=body.text.substr(0,*name.flow_anchor);
+            const auto layout=layout_text(prefix,advance,bounds);
+            const auto row=layout.line_count ? layout.line_count-1 : 0;
+            const float offset=static_cast<float>(row)*body.line_height;
+            const float bottom=name.y+name.height;
+            name.y=body.y+offset; name.height=std::max(1.0f,bottom-name.y);
+        }
+    }
+    for (auto& body : scene.layers) {
         if (body.upward_room<=0) continue;
         const auto requested=static_cast<unsigned>(std::clamp(std::lround(body.font_size*display_scale),1L,2048L));
         if (pixels_!=requested) {

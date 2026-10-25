@@ -63,6 +63,36 @@ MessageUI::MessageUI(const Content& content,const std::string& path) {
         modes_.emplace(id,std::move(mode));
     }
 }
+void MessageUI::set_mode(int mode) {
+    if (mode_==mode) return;
+    mode_=mode;
+    page_message_.reset(); active_message_.reset(); prefix_.clear(); current_text_.clear(); page_labels_.clear(); prefix_characters_=0;
+}
+void MessageUI::begin_message(int mode,const Message& message) {
+    set_mode(mode);
+    if (mode!=2) { active_message_=message; return; }
+    const bool continuation=page_message_ && page_message_->script==message.script && page_message_->id==message.id;
+    std::string prefix;
+    auto labels=continuation ? page_labels_ : std::vector<Label>{};
+    if (continuation) {
+        prefix=prefix_+current_text_;
+        if (!prefix.empty() && prefix.back()!='\n' && prefix.back()!='\r') prefix+='\n';
+    }
+    const auto current=Dialogue(message.text,0).full_text();
+    const auto count=decode_utf8(prefix).size();
+    if (prefix.size()+current.size()>1024*1024 || count+decode_utf8(current).size()>65536)
+        throw std::runtime_error("Full-screen message page exceeds text budget");
+    const auto name=display_name(message.name);
+    if (!name.empty()) {
+        std::size_t label_bytes=name.size();
+        for (const auto& label : labels) label_bytes+=label.text.size();
+        if (label_bytes>1024*1024) throw std::runtime_error("Full-screen speaker text exceeds page budget");
+        if (labels.size()>=1024) throw std::runtime_error("Full-screen speaker count exceeds page budget");
+        labels.push_back({name,prefix.size()});
+    }
+    prefix_=std::move(prefix); current_text_=current; prefix_characters_=count;
+    page_message_=message; active_message_=message; page_labels_=std::move(labels);
+}
 std::string MessageUI::display_name(const std::string& raw) {
     if (raw.starts_with('#')) return "";
     if (raw.starts_with('@')) return "? ? ?";
@@ -72,20 +102,36 @@ Scene MessageUI::scene(int mode,const std::optional<Message>& message,const std:
                        std::size_t visible,bool ready,double elapsed) const {
     Scene result; result.title="ef - the first tale."; result.background={0,0,0,1};
     if (!std::isfinite(elapsed) || elapsed<0 || elapsed>1e12) throw std::runtime_error("Invalid message animation clock");
-    if (mode==0 || !message) return result;
+    if (mode==0) return result;
     const auto found=modes_.find(mode);
     if (found==modes_.end()) throw std::runtime_error("No imported layout for panel mode "+std::to_string(mode));
+    if (mode!=mode_) return result;
     const auto& layout=found->second;
     result.layers=layout.images;
+    if (!message || !active_message_ || active_message_->script!=message->script ||
+        active_message_->id!=message->id || active_message_->source_line!=message->source_line) return result;
     auto name=layout.name, body=layout.body;
+    const bool page=mode==2 && page_message_ && page_message_->script==message->script &&
+        page_message_->id==message->id && page_message_->source_line==message->source_line;
+    if (mode==2 && !page) return result; // A mode reset must not resurrect Runtime's previous message.
+    if (page) {
+        for (const auto& label : page_labels_) {
+            auto speaker=name; speaker.text=label.text; speaker.flow_anchor=label.byte_offset;
+            result.layers.push_back(std::move(speaker));
+        }
+        body.text=prefix_+text;
+        const auto current_count=decode_utf8(text).size();
+        body.visible_characters=prefix_characters_+std::min(visible,current_count);
+        body.flow_body=true;
+    }
     const auto label=display_name(message->name);
-    if (!label.empty()) {
+    if (!page && !label.empty()) {
         name.text=layout.name_prefix+label+layout.name_suffix;
         result.layers.push_back(std::move(name));
         if (layout.name_newline) { body.y+=body.line_height; body.height-=body.line_height; }
     }
-    body.text=text; body.visible_characters=visible;
-    if (ready && !text.empty()) body.advance_marker=TextMarker{advance_asset_,frame_size_,
+    if (!page) { body.text=text; body.visible_characters=visible; }
+    if (ready && !body.text.empty()) body.advance_marker=TextMarker{advance_asset_,frame_size_,
         static_cast<int>(std::fmod(std::floor(elapsed*1000/frame_ms_),frames_))};
     result.layers.push_back(std::move(body));
     return result;

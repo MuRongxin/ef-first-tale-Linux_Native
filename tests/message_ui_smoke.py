@@ -11,11 +11,7 @@ from PIL import Image
 from render_smoke import ROOT, importer
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, default=ROOT / "build/dev/ef_native")
-    args = parser.parse_args()
-    out = ROOT / "build/message-ui-smoke"
+def prepare_fixture(out):
     (out / "scripts").mkdir(parents=True, exist_ok=True)
     font, face = importer.find_font()
     shutil.copyfile(font, out / "font.ttc")
@@ -54,6 +50,14 @@ def main():
     index = {"version": 1, "encoding": "utf-8", "view": "view.json", "message_ui": "message.ui.json",
              "scripts": {"scr/"+name: {"path": name} for name in scripts}}
     (out / "scripts/index.json").write_text(json.dumps(index))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", type=Path, default=ROOT / "build/dev/ef_native")
+    args = parser.parse_args()
+    out = ROOT / "build/message-ui-smoke"
+    prepare_fixture(out)
     environment = dict(os.environ, SDL_VIDEO_DRIVER="x11", LIBGL_ALWAYS_SOFTWARE="1")
     for name in ("normal", "cinema", "long"):
         capture = out / (name + ".ppm")

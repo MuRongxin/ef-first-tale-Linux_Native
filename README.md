@@ -93,7 +93,9 @@ python3 tools/import_scripts.py --refresh-ui --out content
 ```
 
 更新后重启剧本预览。小型包缺少布局或资源目录时仍使用开发叠层。
-目前仍需校准原版字体基线/描边和面板切换动画；全屏文本的跨消息连续累积也尚未复刻。
+全屏文本按 `script + L0` 分组续写，保留段落、空行和姓名列；新 L0 或离开模式会清页。
+已覆盖原数据全部8段、35条全屏对白，两种变体均无排版溢出。显式分页控制与自动分页器尚未接入，过长页面会明确报错。
+目前仍需校准原版字体基线/描边和面板切换动画。
 特殊转场、立绘位置标志、其他特效和跨曲交叠淡化仍会停止。
 雪花运动与淡化已按原程序重建，随机种子采用固定值，尚未完成逐像素对照。
 `--silent` 不打开音频设备，继续推进音频时钟；无头 `--trace-messages N` 自动采用此行为。
@@ -117,6 +119,7 @@ sudo apt-get install xvfb xauth openbox x11-utils libxtst6
 xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/render_smoke.py
 xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/script_window_smoke.py
 xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/message_ui_smoke.py
+xvfb-run -a -s '-screen 0 1600x1200x24' python3 tests/nvl_window_smoke.py
 SDL_VIDEO_FORCE_EGL=1 xvfb-run -a -s '-screen 0 1600x1200x24' \
     python3 tests/render_smoke.py --out build/render-smoke-egl
 ```

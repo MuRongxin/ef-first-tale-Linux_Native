@@ -16,7 +16,8 @@ struct Layer {
     Color color{1, 1, 1, 1};
     std::optional<std::array<float,4>> source; // image atlas region in design pixels
     float line_height{}, letter_spacing{}, upward_room{};
-    bool kinsoku{};
+    bool kinsoku{}, flow_body{};
+    std::optional<std::size_t> flow_anchor; // UTF-8 byte offset of a speaker in a full-screen page
     std::optional<TextMarker> advance_marker;
     std::size_t visible_characters{std::numeric_limits<std::size_t>::max()};
 };
