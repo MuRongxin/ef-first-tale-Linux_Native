@@ -16,6 +16,17 @@ int main() {
         ef::FontSettings settings{dir/"中文 font.ttc",2,1.25f};
         ef::save_font_settings(path,settings);
         require(ef::load_font_settings(path)==settings);
+        settings.appearance=ef::TextAppearance{};
+        settings.appearance->outline_width=1.5f; settings.appearance->shadow_x=2; settings.appearance->baseline_offset=-1;
+        ef::save_font_settings(path,settings);
+        require(ef::load_font_settings(path)==settings);
+        auto bad_effect=settings; bad_effect.appearance->outline_width=5;
+        rejects([&] { ef::save_font_settings(path,bad_effect); });
+        bad_effect=settings; bad_effect.appearance->shadow_color[3]=2;
+        rejects([&] { bad_effect.validate(); });
+        bad_effect=settings; bad_effect.appearance->baseline_offset=std::numeric_limits<float>::infinity();
+        rejects([&] { bad_effect.validate(); });
+        require(ef::load_font_settings(path)==settings);
         auto invalid=settings; invalid.scale=std::numeric_limits<float>::quiet_NaN();
         rejects([&] { ef::save_font_settings(path,invalid); });
         require(ef::load_font_settings(path)==settings);
@@ -26,6 +37,8 @@ int main() {
         rejects([&] { (void)ef::load_font_settings(path); });
         std::ofstream(path) << "invalid json";
         rejects([&] { (void)ef::load_font_settings(path); });
+        std::ofstream(path) << R"({"version":1,"file":"","face":0,"scale":1})";
+        require(ef::load_font_settings(path)==ef::FontSettings{}); // Upgrade from the original font preferences.
         ef::save_font_settings(path,{});
         require(ef::load_font_settings(path)==ef::FontSettings{});
         require(std::distance(std::filesystem::directory_iterator(dir),std::filesystem::directory_iterator{})==1);

@@ -103,12 +103,18 @@ def main():
 
         wait_settings(lambda s: s['file'] == str(out/'font.ttc'))
         time.sleep(.2)  # Let the window receive keyboard focus on a bare Xvfb server.
+        key(0xffc2)  # F5: shadow
+        wait_settings(lambda s: s.get('appearance') and s['appearance']['shadow_x'] == 1 and s['appearance']['outline_width'] == 0)
+        key(0xffc2)  # F5: outline + shadow
+        wait_settings(lambda s: s.get('appearance') and s['appearance']['outline_width'] == 1)
+        key(0xffc2)  # F5: clear effects
+        wait_settings(lambda s: s.get('appearance') and s['appearance']['shadow_x'] == 0 and s['appearance']['outline_width'] == 0)
         key(0xffc3)  # F6
         wait_settings(lambda s: s['face'] == 1)
         key(0xffc5)  # F8
         wait_settings(lambda s: abs(s['scale']-1.05)<.001)
         key(0xffc6)  # F9
-        wait_settings(lambda s: s['file'] == '' and s['face'] == 0 and s['scale'] == 1)
+        wait_settings(lambda s: s['file'] == '' and s['face'] == 0 and s['scale'] == 1 and s['appearance'] is None)
         stdout = process.communicate(timeout=10)[0].decode(errors='replace')
         assert process.returncode == 0, stdout
         assert 'font applied=' in stdout

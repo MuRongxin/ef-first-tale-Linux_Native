@@ -1,11 +1,14 @@
 #pragma once
 #include <filesystem>
 #include <string>
+#include <optional>
+#include "text/appearance.hpp"
 namespace ef {
 struct FontSettings {
     std::filesystem::path file;
     int face{};
     float scale{1};
+    std::optional<TextAppearance> appearance{};
     bool operator==(const FontSettings&) const = default;
     void validate() const;
 };

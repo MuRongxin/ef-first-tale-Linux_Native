@@ -26,6 +26,7 @@ Layer text_layer(const nlohmann::json& rect,const nlohmann::json& style) {
     if (!std::all_of(layer.color.begin(),layer.color.end(),[](float n) { return std::isfinite(n) && n>=0 && n<=1; }))
         throw std::runtime_error("Invalid message text color");
     layer.kinsoku=true;
+    if (style.contains("appearance")) layer.appearance=style.at("appearance").get<TextAppearance>();
     return layer;
 }
 }

@@ -7,6 +7,7 @@
 #include <unistd.h>
 namespace ef {
 void FontSettings::validate() const {
+    if (appearance) appearance->validate();
     if (face<0 || face>65535 || (file.empty() && face!=0)) throw std::runtime_error("Invalid font face index");
     if (!std::isfinite(scale) || scale<0.75f || scale>1.5f) throw std::runtime_error("Font scale must be between 0.75 and 1.5");
     if (!file.empty() && !file.is_absolute()) throw std::runtime_error("Custom font path must be absolute");
@@ -28,6 +29,7 @@ FontSettings load_font_settings(const std::filesystem::path& path) {
     result.file=json.at("file").get<std::string>();
     result.face=json.at("face").get<int>();
     result.scale=json.at("scale").get<float>();
+    if (json.contains("appearance") && !json.at("appearance").is_null()) result.appearance=json.at("appearance").get<TextAppearance>();
     result.validate();
     return result;
 }
@@ -41,7 +43,9 @@ void save_font_settings(const std::filesystem::path& path,const FontSettings& se
     close(fd);
     try {
         std::ofstream output(pattern);
-        output << nlohmann::json{{"version",1},{"file",settings.file.string()},{"face",settings.face},{"scale",settings.scale}}.dump(2) << '\n';
+        nlohmann::json json{{"version",1},{"file",settings.file.string()},{"face",settings.face},{"scale",settings.scale}};
+        json["appearance"]=settings.appearance ? nlohmann::json(*settings.appearance) : nlohmann::json(nullptr);
+        output << json.dump(2) << '\n';
         output.close();
         if (!output) throw std::runtime_error("Cannot write font configuration");
         std::filesystem::rename(pattern,path);

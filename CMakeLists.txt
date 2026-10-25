@@ -19,6 +19,7 @@ add_library(ef_core
     src/data/image.cpp
     src/scene/scene.cpp
     src/scene/message_ui.cpp
+    src/text/appearance.cpp
     src/text/layout.cpp
     src/scene/snow.cpp
     src/script/script.cpp
@@ -67,6 +68,11 @@ if(EF_BUILD_APP)
     add_library(ef_audio_output src/audio/output.cpp)
     target_link_libraries(ef_audio_output PUBLIC ef_audio PRIVATE SDL3::SDL3)
     ef_compile_options(ef_audio_output)
+    if(BUILD_TESTING)
+        add_executable(ef_text_effects_tests tests/text_effects_tests.cpp src/text/font.cpp src/render/renderer.cpp)
+        target_link_libraries(ef_text_effects_tests PRIVATE ef_fonts SDL3::SDL3 OpenGL::GL GLEW::GLEW)
+        ef_compile_options(ef_text_effects_tests)
+    endif()
     add_executable(ef_native src/main.cpp src/app/application.cpp src/app/script_view.cpp src/render/renderer.cpp src/text/font.cpp)
     target_link_libraries(ef_native PRIVATE ef_core ef_fonts ef_audio_output SDL3::SDL3 OpenGL::GL GLEW::GLEW Freetype::Freetype)
     ef_compile_options(ef_native)
@@ -144,6 +150,9 @@ if(BUILD_TESTING)
                 --faces-binary $<TARGET_FILE:ef_font_faces_tests>)
         endif()
         if(EF_BUILD_APP AND EF_XVFB_RUN)
+            add_test(NAME text_effects COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/text_effects_smoke.py --binary $<TARGET_FILE:ef_text_effects_tests>)
+            set_tests_properties(text_effects PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME font_customization COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/font_customization_smoke.py --binary $<TARGET_FILE:ef_native>
                 --faces-binary $<TARGET_FILE:ef_font_faces_tests>)

@@ -64,6 +64,7 @@ Scene Scene::load(const Content& content, const std::string& path) {
             layer.line_height=number(item,"line_height",0);
             layer.letter_spacing=number(item,"letter_spacing",0);
             layer.kinsoku=item.value("kinsoku",false);
+            if (item.contains("appearance")) layer.appearance=item.at("appearance").get<TextAppearance>();
             if (layer.height<0 || layer.line_height<0 || layer.letter_spacing<0) throw std::runtime_error("Invalid text layout metrics");
             if (layer.font_size <= 0 || layer.font_size > 256 || layer.width <= 0) throw std::runtime_error("Invalid text size");
         } else throw std::runtime_error("Unknown scene layer: " + kind);

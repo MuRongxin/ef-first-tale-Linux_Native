@@ -34,7 +34,10 @@ int main(int argc, char** argv) {
                              "  --font FILE           Custom TTF/OTF/TTC; saved after successful window startup\n"
                              "  --font-face N         Face index in a font collection (default 0)\n"
                              "  --font-size N         Font size percentage (75..150), auto-fit to message regions\n"
-                             "  --font-default        Restore packaged font and default size\n"
+                             "  --text-outline N      Black outline width in design pixels (0..4)\n"
+                             "  --text-shadow N       Black shadow diagonal offset (0..8)\n"
+                             "  --text-baseline N     Glyph baseline offset (-8..8); wrapping remains unchanged\n"
+                             "  --font-default        Restore packaged font, default size and text appearance\n"
                              "  --font-config FILE    Override user font configuration path\n"
                              "  --silent              Advance audio silently without opening a device\n"
                              "  --text-preview        Proofreading only: report and skip unimplemented commands\n"
@@ -45,7 +48,7 @@ int main(int argc, char** argv) {
                              "  --frames N            Exit after N rendered frames\n"
                              "  --smoke               Check normal -> borderless -> restored tier transitions\n"
                              "  --screenshot FILE     Write final frame as PPM (requires --frames or --smoke)\n"
-                             "Keys: drop font file to preview; F6 next collection face; F7/F8 smaller/larger; F9 default.\n"
+                             "Keys: drop font file to preview; F5 text appearance; F6 next collection face; F7/F8 smaller/larger; F9 default.\n"
                              "      F11 borderless, F10 maximize/restore, R reload content, Esc leave fullscreen/exit.\n";
                 return 0;
             }
@@ -62,6 +65,9 @@ int main(int argc, char** argv) {
             else if (arg == "--font-face") options.font_face = integer(0,65535);
             else if (arg == "--font-size") options.font_percent = integer(75,150);
             else if (arg == "--font-config") options.font_config = value();
+            else if (arg == "--text-outline") options.text_outline = integer(0,4);
+            else if (arg == "--text-shadow") options.text_shadow = integer(0,8);
+            else if (arg == "--text-baseline") options.text_baseline = integer(-8,8);
             else if (arg == "--font-default") options.default_font = true;
             else if (arg == "--silent") options.silent = true;
             else if (arg == "--text-preview") options.text_preview = true;

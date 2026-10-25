@@ -2,6 +2,7 @@
 #include "render/renderer.hpp"
 #include "text/font_faces.hpp"
 #include <map>
+#include <tuple>
 namespace ef {
 struct TextDrawResult { Point cursor{}; float line_height{}; bool overflow{}; };
 class Font {
@@ -18,7 +19,8 @@ public:
     void validate(const Scene& scene) const;
 private:
     struct Glyph {
-        Texture texture;
+        Texture texture,outline;
+        float outline_width{},outline_height{},outline_left{},outline_top{};
         float width{}, height{}, left{}, top{}, advance{}, em_advance{};
         FT_UInt index{};
         FT_Face face{};
@@ -26,7 +28,9 @@ private:
     const Glyph& glyph(char32_t codepoint);
     FontFaces faces_;
     float scale_{1};
+    std::optional<TextAppearance> appearance_;
+    unsigned stroke_{}; // physical radius in FreeType 26.6 units
     unsigned pixels_{};
-    std::map<std::pair<unsigned, char32_t>, Glyph> glyphs_;
+    std::map<std::tuple<unsigned,unsigned,char32_t>, Glyph> glyphs_;
 };
 }

@@ -17,6 +17,7 @@ struct Options {
     std::optional<std::filesystem::path> font_file;
     std::optional<int> font_face, font_percent;
     bool default_font{};
+    std::optional<int> text_outline,text_shadow,text_baseline;
 };
 int run(const Options& options);
 }

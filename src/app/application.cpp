@@ -96,12 +96,20 @@ int run(const Options& options) {
     if (options.font_file) { font_settings.file=*options.font_file; font_settings.face=0; }
     if (options.font_face) font_settings.face=*options.font_face;
     if (options.font_percent) font_settings.scale=static_cast<float>(*options.font_percent)/100;
+    if (options.text_outline || options.text_shadow || options.text_baseline) {
+        auto appearance=font_settings.appearance.value_or(TextAppearance{});
+        if (options.text_outline) appearance.outline_width=static_cast<float>(*options.text_outline);
+        if (options.text_shadow) appearance.shadow_x=appearance.shadow_y=static_cast<float>(*options.text_shadow);
+        if (options.text_baseline) appearance.baseline_offset=static_cast<float>(*options.text_baseline);
+        font_settings.appearance=appearance;
+    }
     font_settings.validate();
-    const bool font_override=options.default_font || options.font_file || options.font_face || options.font_percent;
+    const bool font_override=options.default_font || options.font_file || options.font_face || options.font_percent ||
+        options.text_outline || options.text_shadow || options.text_baseline;
     auto create_font=[&]() {
         try { return std::make_unique<Font>(content,font_settings); }
         catch (const std::exception& e) {
-            if (font_override || font_settings.file.empty()) throw;
+            if (options.font_file || options.font_face || font_settings.file.empty()) throw;
             std::cerr << "[font] Saved font unavailable; using packaged font: " << e.what() << '\n';
             font_settings.file.clear(); font_settings.face=0;
             return std::make_unique<Font>(content,font_settings);
@@ -191,6 +199,17 @@ int run(const Options& options) {
                 if (flags & SDL_WINDOW_FULLSCREEN) checked(SDL_SetWindowFullscreen(window.handle, false), "Leave fullscreen");
                 else running = false;
                 break;
+            case SDLK_F5: {
+                auto candidate=font_settings;
+                const auto previous_appearance=candidate.appearance.value_or(TextAppearance{});
+                TextAppearance next; next.baseline_offset=previous_appearance.baseline_offset;
+                if (previous_appearance.outline_width==0) {
+                    next.shadow_x=next.shadow_y=1;
+                    if (previous_appearance.shadow_x!=0 || previous_appearance.shadow_y!=0) next.outline_width=1;
+                }
+                candidate.appearance=next;
+                change_font(candidate); break;
+            }
             case SDLK_F6: {
                 if (font_settings.file.empty()) break;
                 auto candidate=font_settings;
@@ -284,12 +303,13 @@ int run(const Options& options) {
         }
         if (SDL_GetTicks()<font_notice_until) {
             Layer background; background.kind=LayerKind::rectangle;
-            background.x=10; background.y=10; background.width=780; background.height=64;
+            background.x=10; background.y=10; background.width=780; background.height=84;
             background.color={0,0,0,0.9f}; renderer.rectangle(background);
             Layer notice; notice.kind=LayerKind::text; notice.x=20; notice.y=16; notice.width=760; notice.font_size=18;
             notice.text=font_notice_error ? "字体无法使用，已保留之前的设置。" :
-                "字号 "+std::to_string(std::lround(font_settings.scale*100))+"%   字面 "+std::to_string(font_settings.face)+"   F6 切换字面   F7/F8 调整字号   F9 恢复默认";
-            notice.text+=font_notice_saved ? "\n可拖入 TTF / OTF / TTC 字体；有效设置自动保存。" : "\n当前预览已生效，但配置保存失败，请检查配置目录。";
+                "字号 "+std::to_string(std::lround(font_settings.scale*100))+"%   字面 "+std::to_string(font_settings.face)+"   F5 切换外观   F6 切换字面";
+            notice.text+="\nF7/F8 调整字号   F9 恢复默认   拖入字体文件即可应用。";
+            notice.text+=font_notice_saved ? "\n有效设置已自动保存。" : "\n当前预览已生效，但配置保存失败，请检查配置目录。";
             font->draw(renderer,notice,view.scale());
         }
         ++frames;

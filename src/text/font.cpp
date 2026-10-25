@@ -4,11 +4,33 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include FT_STROKER_H
+#include FT_GLYPH_H
 
 namespace ef {
-Font::Font(const Content& content,const FontSettings& settings) : faces_(content,settings),scale_(settings.scale) {}
+namespace {
+Texture mask_texture(const FT_Bitmap& bitmap) {
+    if (!bitmap.width || !bitmap.rows) return {};
+    if (bitmap.pixel_mode!=FT_PIXEL_MODE_GRAY) throw std::runtime_error("Font requires grayscale outline glyphs");
+    Image image{static_cast<int>(bitmap.width),static_cast<int>(bitmap.rows),{}};
+    image.rgba.resize(static_cast<std::size_t>(bitmap.width)*bitmap.rows*4,255);
+    for (unsigned y=0; y<bitmap.rows; ++y) {
+        const auto row=bitmap.pitch>=0 ? y : bitmap.rows-1-y;
+        const auto* source=bitmap.buffer+static_cast<std::size_t>(row)*static_cast<unsigned>(std::abs(bitmap.pitch));
+        for (unsigned x=0; x<bitmap.width; ++x) image.rgba[(static_cast<std::size_t>(y)*bitmap.width+x)*4+3]=source[x];
+    }
+    return Texture(image);
+}
+struct Stroke {
+    FT_Stroker stroker{};
+    FT_Glyph glyph{};
+    ~Stroke() { if (glyph) FT_Done_Glyph(glyph); if (stroker) FT_Stroker_Done(stroker); }
+};
+}
+Font::Font(const Content& content,const FontSettings& settings) : faces_(content,settings),scale_(settings.scale),appearance_(settings.appearance) {}
 Font::~Font() = default;
 void Font::style(Scene& scene) const {
+    if (appearance_) for (auto& layer : scene.layers) if (layer.kind==LayerKind::text) layer.appearance=*appearance_;
     if (!faces_.customized() && scale_==1) return;
     std::map<char32_t,float> advances;
     for (auto& layer : scene.layers) if (layer.kind==LayerKind::text) {
@@ -54,12 +76,12 @@ void Font::style(Scene& scene) const {
     }
 }
 const Font::Glyph& Font::glyph(char32_t cp) {
-    const auto key = std::make_pair(pixels_, cp);
+    const auto key = std::make_tuple(pixels_,stroke_,cp);
     if (const auto it = glyphs_.find(key); it != glyphs_.end()) return it->second;
     const auto face_=faces_.for_character(cp);
     const auto index = FT_Get_Char_Index(face_, static_cast<FT_ULong>(cp));
     if (!index) throw std::runtime_error("Content font is missing code point " + std::to_string(static_cast<unsigned>(cp)));
-    if (FT_Load_Glyph(face_, index, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL)) throw std::runtime_error("FreeType glyph rasterization failed");
+    if (FT_Load_Glyph(face_, index, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL | FT_LOAD_NO_BITMAP)) throw std::runtime_error("FreeType glyph rasterization failed");
     const auto& bitmap = face_->glyph->bitmap;
     Glyph result;
     result.width = static_cast<float>(bitmap.width);
@@ -68,17 +90,20 @@ const Font::Glyph& Font::glyph(char32_t cp) {
     result.top = static_cast<float>(face_->glyph->bitmap_top);
     result.advance = static_cast<float>(face_->glyph->advance.x) / 64.0f;
     result.index = index; result.face=face_;
-    if (bitmap.width && bitmap.rows) {
-        if (bitmap.pixel_mode != FT_PIXEL_MODE_GRAY) throw std::runtime_error("Font must provide grayscale outline glyphs");
-        Image image{static_cast<int>(bitmap.width), static_cast<int>(bitmap.rows), {}};
-        image.rgba.resize(static_cast<std::size_t>(bitmap.width) * bitmap.rows * 4, 255);
-        for (unsigned y = 0; y < bitmap.rows; ++y) {
-            const auto row = bitmap.pitch >= 0 ? y : bitmap.rows - 1 - y;
-            const auto* source = bitmap.buffer + static_cast<std::size_t>(row) * static_cast<unsigned>(std::abs(bitmap.pitch));
-            for (unsigned x = 0; x < bitmap.width; ++x)
-                image.rgba[(static_cast<std::size_t>(y) * bitmap.width + x) * 4 + 3] = source[x];
-        }
-        result.texture = Texture(image);
+    result.texture=mask_texture(bitmap);
+    if (stroke_ && result.texture.id()) {
+        Stroke outline;
+        if (FT_Load_Glyph(face_,index,FT_LOAD_DEFAULT|FT_LOAD_NO_BITMAP) ||
+            FT_Get_Glyph(face_->glyph,&outline.glyph) || FT_Stroker_New(face_->glyph->library,&outline.stroker))
+            throw std::runtime_error("Cannot prepare font outline");
+        FT_Stroker_Set(outline.stroker,static_cast<FT_Fixed>(stroke_),FT_STROKER_LINECAP_ROUND,FT_STROKER_LINEJOIN_ROUND,0);
+        if (FT_Glyph_StrokeBorder(&outline.glyph,outline.stroker,false,true) ||
+            FT_Glyph_To_Bitmap(&outline.glyph,FT_RENDER_MODE_NORMAL,nullptr,true))
+            throw std::runtime_error("Cannot rasterize font outline");
+        const auto stroked=reinterpret_cast<FT_BitmapGlyph>(outline.glyph);
+        result.outline=mask_texture(stroked->bitmap);
+        result.outline_width=static_cast<float>(stroked->bitmap.width); result.outline_height=static_cast<float>(stroked->bitmap.rows);
+        result.outline_left=static_cast<float>(stroked->left); result.outline_top=static_cast<float>(stroked->top);
     }
     // Measure wrapping in font units so window scaling cannot change line breaks.
     if (face_->units_per_EM<=0 || FT_Load_Glyph(face_,index,FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING))
@@ -87,6 +112,7 @@ const Font::Glyph& Font::glyph(char32_t cp) {
     return glyphs_.emplace(key, std::move(result)).first->second;
 }
 void Font::fit_messages(Scene& scene,float display_scale) {
+    stroke_=0;
     for (auto& body : scene.layers) {
         if (!body.flow_body) continue;
         const auto requested=static_cast<unsigned>(std::clamp(std::lround(body.font_size*display_scale),1L,2048L));
@@ -130,7 +156,9 @@ void Font::fit_messages(Scene& scene,float display_scale) {
     }
 }
 TextDrawResult Font::draw(Renderer& renderer, const Layer& layer, float display_scale) {
-    if (display_scale <= 0) return {};
+    if (!std::isfinite(display_scale) || display_scale <= 0) return {};
+    layer.appearance.validate();
+    stroke_=static_cast<unsigned>(std::lround(layer.appearance.outline_width*display_scale*64));
     const auto requested = static_cast<unsigned>(std::clamp(std::lround(layer.font_size * display_scale), 1L, 2048L));
     if (glyphs_.size() > 2048) glyphs_.clear();
     if (pixels_ != requested) {
@@ -140,6 +168,30 @@ TextDrawResult Font::draw(Renderer& renderer, const Layer& layer, float display_
     const auto face_=faces_.primary();
     const float line_height = layer.line_height>0 ? layer.line_height : static_cast<float>(face_->size->metrics.height) / 64.0f / display_scale;
     const float ascender = static_cast<float>(face_->size->metrics.ascender) / 64.0f / display_scale;
+    struct Placement { const Glyph* glyph; float x,y; };
+    std::vector<Placement> placements;
+    auto paint=[&]() {
+        const auto& effect=layer.appearance;
+        auto shadow_color=effect.shadow_color,outline_color=effect.outline_color;
+        shadow_color[3]*=layer.color[3]; outline_color[3]*=layer.color[3];
+        // Whole-layer passes keep adjacent outlines and shadows behind every foreground glyph.
+        if ((effect.shadow_x!=0 || effect.shadow_y!=0) && shadow_color[3]>0)
+            for (const auto& p : placements) {
+                const auto& g=*p.glyph;
+                if (g.texture.id()) renderer.quad(g.texture,p.x+g.left/display_scale+effect.shadow_x,
+                    p.y-g.top/display_scale+effect.shadow_y,g.width/display_scale,g.height/display_scale,shadow_color);
+            }
+        if (stroke_ && outline_color[3]>0) for (const auto& p : placements) {
+            const auto& g=*p.glyph;
+            if (g.outline.id()) renderer.quad(g.outline,p.x+g.outline_left/display_scale,p.y-g.outline_top/display_scale,
+                g.outline_width/display_scale,g.outline_height/display_scale,outline_color);
+        }
+        for (const auto& p : placements) {
+            const auto& g=*p.glyph;
+            if (g.texture.id()) renderer.quad(g.texture,p.x+g.left/display_scale,p.y-g.top/display_scale,
+                g.width/display_scale,g.height/display_scale,layer.color);
+        }
+    };
     if (layer.kinsoku) {
         const auto layout=layout_text(layer.text,[&](char32_t cp) { return glyph(cp).em_advance*layer.font_size; },
             {layer.width,layer.height>0 ? layer.height+layer.upward_room : 100000.0,line_height,layer.letter_spacing});
@@ -147,10 +199,8 @@ TextDrawResult Font::draw(Renderer& renderer, const Layer& layer, float display_
         for (const auto& placement : layout.glyphs) {
             if (placement.source_index>=layer.visible_characters) continue;
             const auto& item=glyph(placement.codepoint);
-            if (item.texture.id()) renderer.quad(item.texture,
-                layer.x+static_cast<float>(placement.x)+item.left/display_scale,
-                layer.y+static_cast<float>(placement.y)+ascender-item.top/display_scale,
-                item.width/display_scale,item.height/display_scale,layer.color);
+            placements.push_back({&item,layer.x+static_cast<float>(placement.x),
+                layer.y+static_cast<float>(placement.y)+ascender+layer.appearance.baseline_offset});
         }
         Point cursor{layer.x,layer.y};
         if (!layout.glyphs.empty()) {
@@ -159,6 +209,7 @@ TextDrawResult Font::draw(Renderer& renderer, const Layer& layer, float display_
         }
         if (!layer.text.empty() && (layer.text.back()=='\n' || layer.text.back()=='\r'))
             cursor={layer.x,layer.y+static_cast<float>(layout.line_count-1)*line_height};
+        paint();
         return {cursor,line_height,layout.overflow};
     }
     float pen_x = layer.x;
@@ -178,12 +229,11 @@ TextDrawResult Font::draw(Renderer& renderer, const Layer& layer, float display_
         }
         const float advance = item.advance / display_scale;
         if (pen_x > layer.x && pen_x + advance > layer.x + layer.width) { pen_x = layer.x; baseline += line_height; }
-        if (character<layer.visible_characters && item.texture.id())
-            renderer.quad(item.texture, pen_x + item.left / display_scale, baseline - item.top / display_scale,
-                          item.width / display_scale, item.height / display_scale, layer.color);
+        if (character<layer.visible_characters) placements.push_back({&item,pen_x,baseline+layer.appearance.baseline_offset});
         pen_x += advance;
         previous = item.index; previous_face=item.face;
     }
+    paint();
     return {{pen_x,baseline-ascender},line_height,false};
 }
 void Font::validate(const Scene& scene) const {

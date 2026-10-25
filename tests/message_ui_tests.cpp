@@ -50,6 +50,13 @@ int main(int argc,char** argv) {
         auto scene=window.scene(1,message,"正文",1,false,0);
         require(scene.layers.size()==3 && scene.layers[0].y==417,"normal message panel placement");
         require(scene.layers[1].text=="« 纮 »" && scene.layers[2].y==488,"named message uses a separate first line");
+        auto styled_ui=ui; styled_ui["appearance"]={{"outline_width",1.5},{"shadow_y",2},{"baseline_offset",-1}};
+        std::ofstream(temp.path/"styled.json")<<styled_ui.dump();
+        MessageUI styled(content,"styled.json"); styled.begin_message(1,*message);
+        const auto styled_scene=styled.scene(1,message,"正文",1,false,0);
+        require(styled_scene.layers[1].appearance.outline_width==1.5f && styled_scene.layers[2].appearance.baseline_offset==-1,"external text appearance applies to name and body");
+        styled_ui["appearance"]["outline_width"]=-1; std::ofstream(temp.path/"styled.json")<<styled_ui.dump();
+        rejects([&] { MessageUI invalid_style(content,"styled.json"); });
         require(scene.layers[2].text=="正文" && scene.layers[2].visible_characters==1,"full text layout is independent of reveal");
         message->name="#优子"; window.begin_message(3,*message); scene=window.scene(3,message,"字幕",2,true,.2);
         require(scene.layers.size()==3 && scene.layers[0].y==0 && scene.layers[1].y==525,"cinema black bars");
