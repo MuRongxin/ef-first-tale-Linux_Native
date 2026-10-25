@@ -49,15 +49,19 @@ int main() {
         require(runtime.variable("flag") == 7 && runtime.variable("undefined") == 0, "variables");
         runtime.advance(); runtime.update(0);
         require(runtime.state() == ScriptState::waiting, "wait suspends execution");
-        runtime.update(.05);
+        runtime.update(.5);
         require(runtime.state() == ScriptState::waiting, "wait partial elapsed");
-        runtime.update(.05);
+        runtime.update(.5);
         require(runtime.state() == ScriptState::choices && runtime.choices().size() == 2, "choice pause");
         rejects([&] { runtime.choose(2); });
         runtime.choose(0); runtime.update(0);
         require(runtime.message()->id == 200 && runtime.message()->script == "second", "chain with local variable continuity and source anchors");
         runtime.advance(); runtime.update(0);
         require(runtime.state() == ScriptState::ended, "end");
+        ScriptRuntime excerpt(loader, resolver, "start", {'e',false,7});
+        excerpt.update(0);
+        require(excerpt.message()->id == 100 && excerpt.variable("score") == 0,"development start line preserves source anchors without replaying state");
+        rejects([&] { ScriptRuntime invalid(loader,resolver,"start",{'e',false,999}); });
         programs["loop"] = program(".label loop\n.goto loop\n", "loop");
         ScriptRuntime loop(loader, resolver, "loop");
         rejects([&] { loop.update(0); });
@@ -70,6 +74,26 @@ int main() {
         programs["overflow"] = program(".set x = 9223372036854775807\n.set x = x + 1\n", "overflow");
         ScriptRuntime overflow(loader, resolver, "overflow");
         rejects([&] { overflow.update(0); });
+        programs["hosted"] = program(".stage * test.png 0 0\n.message 1 voice #名字 文字\n.wait 100\n.end\n", "hosted");
+        ScriptRuntime hosted(loader, resolver, "hosted");
+        double remaining{}, elapsed{};
+        int commands{}, voices{};
+        hosted.set_host({[&](const Instruction& instruction) {
+            if (instruction.command != ".stage") return false;
+            ++commands; remaining = .2; return true;
+        }, [&](const Message& message) { require(message.voice == "voice", "voice routed through host"); ++voices; },
+        [&](double seconds) { elapsed += seconds; remaining = std::max(0.0, remaining-seconds); },
+        [&] { return remaining > 0; }});
+        hosted.update(0);
+        require(commands == 1 && voices == 0 && hosted.state() == ScriptState::running, "host command blocks following instructions");
+        hosted.update(.1);
+        require(voices == 0, "visual transition remains asynchronous");
+        hosted.update(.1);
+        require(voices == 1 && hosted.state() == ScriptState::message, "message and voice begin after visual completion");
+        hosted.update(.1);
+        require(elapsed > .29 && voices == 1, "host ticks while message is paused without replaying voice");
+        hosted.advance(); hosted.update(0); hosted.update(1);
+        require(hosted.state() == ScriptState::ended, "host and core waits cooperate");
         std::cout << "Script tests PASS: UTF-8/message fields, variants, provenance, variables, branches, waits, choices, chain, diagnostics, loop/overflow guards\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

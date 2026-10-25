@@ -29,6 +29,8 @@ int main(int argc, char** argv) {
                              "  --audit-resources     Check all script image/audio/video references and package files; exit 2 for unresolved references\n"
                              "  --script ID           Run an imported script, e.g. scr/test.sc (strict by default)\n"
                              "  --variant e|j         Explicit timing variant; default e is a development choice\n"
+                             "  --start-line N        Development entry at source line; does not restore preceding state\n"
+                             "  --silent              Advance audio silently without opening a device\n"
                              "  --text-preview        Proofreading only: report and skip unimplemented commands\n"
                              "  --trace-messages N    Headless script check, require N messages; stops at choices\n"
                              "  --width N --height N  Initial window size (320..16384 / 240..16384)\n"
@@ -47,6 +49,8 @@ int main(int argc, char** argv) {
                 if (variant != "e" && variant != "j") throw std::runtime_error("--variant must be e or j");
                 options.variant = variant.front();
             }
+            else if (arg == "--start-line") options.start_line = integer(1, 1000000);
+            else if (arg == "--silent") options.silent = true;
             else if (arg == "--text-preview") options.text_preview = true;
             else if (arg == "--audit-scripts") options.audit_scripts = true;
             else if (arg == "--audit-resources") options.audit_resources = true;
@@ -65,7 +69,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("--smoke requires a normal window and cannot combine with --frames/--validate-content");
         if (!options.screenshot.empty() && (!(options.frames || options.smoke) || options.validate))
             throw std::runtime_error("--screenshot requires --frames or --smoke");
-        if ((options.text_preview || options.trace_messages) && options.script.empty()) throw std::runtime_error("Script options require --script ID");
+        if ((options.text_preview || options.trace_messages || options.start_line || options.silent) && options.script.empty()) throw std::runtime_error("Script options require --script ID");
         if ((!options.script.empty() && (options.smoke || options.validate || options.audit_scripts || options.audit_resources)) ||
             (options.trace_messages && (options.frames || !options.screenshot.empty())))
             throw std::runtime_error("Conflicting script/validation/window smoke options");

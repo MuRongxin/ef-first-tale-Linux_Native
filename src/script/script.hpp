@@ -44,7 +44,13 @@ struct Message {
     std::size_t source_line{};
 };
 struct Choice { std::string text, label; };
-struct ScriptOptions { char variant{'e'}; bool text_preview{}; };
+struct ScriptOptions { char variant{'e'}; bool text_preview{}; std::size_t start_line{}; };
+struct ScriptHost {
+    std::function<bool(const Instruction&)> command;
+    std::function<void(const Message&)> message;
+    std::function<void(double)> tick;
+    std::function<bool()> busy;
+};
 class ScriptRuntime {
 public:
     using Loader = std::function<std::shared_ptr<const Program>(const std::string&)>;
@@ -53,6 +59,7 @@ public:
     void update(double seconds);
     void advance();
     void choose(std::size_t index);
+    void set_host(ScriptHost host) { host_ = std::move(host); }
     [[nodiscard]] ScriptState state() const { return state_; }
     [[nodiscard]] const std::optional<Message>& message() const { return message_; }
     [[nodiscard]] const std::vector<Choice>& choices() const { return choices_; }
@@ -65,6 +72,7 @@ private:
     Loader loader_;
     Resolver resolver_;
     ScriptOptions options_;
+    ScriptHost host_;
     std::shared_ptr<const Program> program_;
     std::size_t pc_{};
     ScriptState state_{ScriptState::running};

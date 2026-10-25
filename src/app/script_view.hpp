@@ -2,6 +2,7 @@
 #include "app/application.hpp"
 #include "script/script.hpp"
 #include "scene/scene.hpp"
+#include "scene/presentation.hpp"
 namespace ef {
 class ScriptView {
 public:
@@ -12,7 +13,10 @@ public:
     void click(Point point);
     [[nodiscard]] Scene scene() const;
     [[nodiscard]] const ScriptRuntime& runtime() const { return runtime_; }
+    Presentation& presentation() { return presentation_; }
+    const Presentation& presentation() const { return presentation_; }
 private:
+    Presentation presentation_;
     ScriptLibrary library_;
     ScriptRuntime runtime_;
     Scene template_;

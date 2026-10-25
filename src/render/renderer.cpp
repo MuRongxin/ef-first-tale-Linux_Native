@@ -1,6 +1,7 @@
 #include "render/renderer.hpp"
 #include <SDL3/SDL_video.h>
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -8,6 +9,42 @@
 
 namespace ef {
 namespace {
+void checked_gl(const char* operation) {
+    if (const auto error = glGetError(); error != GL_NO_ERROR)
+        throw std::runtime_error(std::string(operation) + ": OpenGL error " + std::to_string(error));
+}
+struct StageState {
+    GLint draw{}, read{};
+    std::array<GLint, 4> viewport{}, scissor{};
+    std::array<GLfloat, 4> clear{};
+    GLint src_rgb{}, dst_rgb{}, src_alpha{}, dst_alpha{}, equation_rgb{}, equation_alpha{};
+    bool scissored{}, blended{};
+    StageState() {
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw);
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
+        glGetIntegerv(GL_VIEWPORT, viewport.data());
+        glGetIntegerv(GL_SCISSOR_BOX, scissor.data());
+        glGetFloatv(GL_COLOR_CLEAR_VALUE, clear.data());
+        glGetIntegerv(GL_BLEND_SRC_RGB, &src_rgb); glGetIntegerv(GL_BLEND_DST_RGB, &dst_rgb);
+        glGetIntegerv(GL_BLEND_SRC_ALPHA, &src_alpha); glGetIntegerv(GL_BLEND_DST_ALPHA, &dst_alpha);
+        glGetIntegerv(GL_BLEND_EQUATION_RGB, &equation_rgb); glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &equation_alpha);
+        scissored = glIsEnabled(GL_SCISSOR_TEST); blended = glIsEnabled(GL_BLEND);
+    }
+    void target() const {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(draw));
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(read));
+        glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+        if (scissored) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
+    }
+    ~StageState() {
+        target();
+        glBlendFuncSeparate(static_cast<GLenum>(src_rgb), static_cast<GLenum>(dst_rgb), static_cast<GLenum>(src_alpha), static_cast<GLenum>(dst_alpha));
+        glBlendEquationSeparate(static_cast<GLenum>(equation_rgb), static_cast<GLenum>(equation_alpha));
+        if (blended) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+        glClearColor(clear[0],clear[1],clear[2],clear[3]);
+    }
+};
 GLuint shader(GLenum kind, const char* source) {
     const GLuint id = glCreateShader(kind);
     glShaderSource(id, 1, &source, nullptr);
@@ -47,6 +84,36 @@ Texture& Texture::operator=(Texture&& other) noexcept {
     }
     return *this;
 }
+Renderer::Target::~Target() { reset(); }
+void Renderer::Target::reset() {
+    if (framebuffer) glDeleteFramebuffers(1, &framebuffer);
+    if (texture) glDeleteTextures(1, &texture);
+    framebuffer = texture = 0;
+    width = height = 0;
+}
+void Renderer::Target::resize(int w, int h) {
+    if (framebuffer && width == w && height == h) return;
+    reset();
+    try {
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        checked_gl("Allocate stage texture");
+        glGenFramebuffers(1, &framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+        glDrawBuffer(GL_COLOR_ATTACHMENT0);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            throw std::runtime_error("Incomplete stage framebuffer");
+        checked_gl("Allocate stage framebuffer");
+        width = w; height = h;
+    } catch (...) { reset(); throw; }
+}
 Renderer::Renderer() {
     try {
         glewExperimental = GL_TRUE;
@@ -67,11 +134,12 @@ Renderer::Renderer() {
         constexpr const char* vertex_source = R"(#version 330 core
 layout(location = 0) in vec2 position;
 uniform vec4 rect;
+uniform int flip_y;
 out vec2 uv;
 void main() {
     vec2 p = rect.xy + position * rect.zw;
     gl_Position = vec4(p.x / 400.0 - 1.0, 1.0 - p.y / 300.0, 0.0, 1.0);
-    uv = position;
+    uv = vec2(position.x, flip_y != 0 ? 1.0-position.y : position.y);
 })";
         constexpr const char* fragment_source = R"(#version 330 core
 in vec2 uv;
@@ -95,6 +163,7 @@ void main() { output_color = texture(image, uv) * color; }
         if (!success) throw std::runtime_error("Cannot link sprite shader");
         rect_uniform_ = glGetUniformLocation(program_, "rect");
         color_uniform_ = glGetUniformLocation(program_, "color");
+        flip_uniform_ = glGetUniformLocation(program_, "flip_y");
         constexpr float vertices[] = {0,0, 1,0, 0,1, 0,1, 1,0, 1,1};
         glGenVertexArrays(1, &vao_);
         glGenBuffers(1, &vbo_);
@@ -112,6 +181,7 @@ void main() { output_color = texture(image, uv) * color; }
     } catch (...) { cleanup(); throw; }
 }
 void Renderer::cleanup() {
+    previous_target_.reset(); current_target_.reset();
     if (program_) glDeleteProgram(program_);
     if (vbo_) glDeleteBuffers(1, &vbo_);
     if (vao_) glDeleteVertexArrays(1, &vao_);
@@ -130,12 +200,16 @@ void Renderer::begin(int width, int height, Viewport view, Color background) {
     glClear(GL_COLOR_BUFFER_BIT);
 }
 void Renderer::quad(const Texture& texture, float x, float y, float w, float h, Color color) {
+    quad_id(texture.id(), x, y, w, h, color, false);
+}
+void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y) {
     glUseProgram(program_);
     glBindVertexArray(vao_);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture.id());
+    glBindTexture(GL_TEXTURE_2D, texture);
     glUniform4f(rect_uniform_, x, y, w, h);
     glUniform4fv(color_uniform_, 1, color.data());
+    glUniform1i(flip_uniform_, flip_y ? 1 : 0);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 void Renderer::rectangle(const Layer& layer) { quad(white_, layer.x, layer.y, layer.width, layer.height, layer.color); }
@@ -144,6 +218,67 @@ void Renderer::clear_cache() {
     cache_bytes_ = 0;
     rejected_.clear();
     reported_.clear();
+    snapshot_valid_ = false;
+    previous_target_.reset(); current_target_.reset();
+}
+void Renderer::opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier) {
+    glDisable(GL_BLEND);
+    quad(white_,0,0,800,600,{0,0,0,1});
+    glEnable(GL_BLEND);
+    glBlendEquationSeparate(GL_FUNC_ADD,GL_FUNC_ADD);
+    glBlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ZERO,GL_ONE);
+    for (const auto& layer : layers) {
+        switch (layer.kind) {
+        case LayerKind::image: image(content,layer,tier); break;
+        case LayerKind::rectangle: rectangle(layer); break;
+        case LayerKind::text: break;
+        default: throw std::runtime_error("Unknown stage layer kind");
+        }
+    }
+}
+void Renderer::stage(const Content& content, const std::vector<Layer>& previous, const std::vector<Layer>& current,
+                     float progress, std::uint64_t revision, AssetTier tier) {
+    if (!std::isfinite(progress)) throw std::runtime_error("Stage progress must be finite");
+    checked_gl("Before stage composite");
+    StageState state;
+    const int width = state.viewport[2], height = state.viewport[3];
+    if (width <= 0 || height <= 0) { snapshot_valid_ = false; return; }
+    if (progress >= 1) {
+        snapshot_valid_ = false;
+        opaque_scene(content,current,tier);
+        checked_gl("Draw current stage");
+        return;
+    }
+    const auto bytes = static_cast<std::uint64_t>(width)*static_cast<std::uint64_t>(height)*8;
+    if (width > max_texture_size_ || height > max_texture_size_ || bytes > composite_budget_)
+        throw std::runtime_error("Stage framebuffer exceeds GPU dimensions or 256 MiB composite budget");
+    const bool rebuild = !snapshot_valid_ || snapshot_revision_ != revision || snapshot_tier_ != tier || snapshot_view_ != state.viewport;
+    if (rebuild) snapshot_valid_ = false;
+    previous_target_.resize(width,height);
+    current_target_.resize(width,height);
+    const auto render = [&](const Target& target, const std::vector<Layer>& layers) {
+        glBindFramebuffer(GL_FRAMEBUFFER,target.framebuffer);
+        glViewport(0,0,width,height);
+        glDisable(GL_SCISSOR_TEST);
+        opaque_scene(content,layers,tier);
+        checked_gl("Compose stage scene");
+    };
+    if (rebuild) {
+        render(previous_target_,previous);
+        snapshot_revision_ = revision; snapshot_tier_ = tier; snapshot_view_ = state.viewport;
+        snapshot_valid_ = true;
+    }
+    render(current_target_,current);
+    state.target();
+    // Both textures are opaque complete scenes; only the new scene's mix alpha
+    // changes. Sampling an FBO needs the opposite Y direction from source PNGs.
+    glDisable(GL_BLEND);
+    quad_id(previous_target_.texture,0,0,800,600,{1,1,1,1},true);
+    glEnable(GL_BLEND);
+    glBlendEquationSeparate(GL_FUNC_ADD,GL_FUNC_ADD);
+    glBlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ZERO,GL_ONE);
+    quad_id(current_target_.texture,0,0,800,600,{1,1,1,std::clamp(progress,0.0f,1.0f)},true);
+    checked_gl("Blend complete stage scenes");
 }
 void Renderer::image(const Content& content, const Layer& layer, AssetTier tier) {
     for (const auto& candidate : content.candidates(layer.asset, tier)) {

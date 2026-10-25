@@ -4,13 +4,29 @@
 
 namespace ef {
 ScriptView::ScriptView(const Content& content, const Options& options)
-    : library_(content),
+    : presentation_(content), library_(content),
       runtime_([this, variant = options.variant](const std::string& id) { return library_.compile(id, variant); },
                [this](const std::string& current, const std::string& target) { return library_.resolve(current, target); },
-               options.script, {options.variant, options.text_preview}),
+               options.script, {options.variant, options.text_preview, static_cast<std::size_t>(options.start_line)}),
       template_(Scene::load(content, content.read_json(content.script_index()).at("view").get<std::string>())), options_(options) {
+    if (!options.text_preview) runtime_.set_host({
+        [this](const Instruction& i) { return presentation_.command(i); },
+        [this](const Message& m) { presentation_.message(m); },
+        [this](double seconds) { presentation_.update(seconds); },
+        [this] { return presentation_.busy(); }});
+    if (options.start_line) std::cerr << "[script] Development start line: preceding scene/variables are not restored\n";
     if (const auto* choice = choice_layer(); !choice || choice->height <= 0)
         throw std::runtime_error("Script view requires a script_choice text slot with positive row height");
+    if (!options.text_preview) {
+        template_.background = {0,0,0,1};
+        for (auto& layer : template_.layers) {
+            if (layer.kind == LayerKind::rectangle) { layer.y = 420; layer.height = 170; layer.color = {0.02f,0.025f,0.04f,0.8f}; }
+            if (layer.slot == "script_name") layer.y = 430;
+            if (layer.slot == "script_text") { layer.y = 465; layer.font_size = 22; }
+            if (layer.slot == "script_choice") { layer.y = 270; layer.height = 34; }
+            if (layer.slot == "script_help") { layer.y = 570; layer.font_size = 12; }
+        }
+    }
     if (!options.text_preview) template_.title = "ef · 严格剧本执行（开发布局）";
     std::cout << "script entry=" << options.script << " variant=" << options.variant
               << " mode=" << (options.text_preview ? "text-preview" : "strict") << '\n';
@@ -50,9 +66,11 @@ Scene ScriptView::scene() const {
     result.layers.clear();
     const auto& message = runtime_.message();
     for (auto layer : template_.layers) {
+        if (!options_.text_preview && !presentation_.panel_visible() &&
+            (layer.kind == LayerKind::rectangle || layer.slot == "script_name" || layer.slot == "script_text")) continue;
         if (layer.slot == "script_mode") layer.text = options_.text_preview ? "ef · 剧本文字校阅" : "ef · 严格执行（开发布局）";
         else if (layer.slot == "script_help" && !options_.text_preview)
-            layer.text = "点击 / 空格 / 回车推进；数字键或点击选择。\n严格模式遇到未实现命令会停止；此布局仅供开发验证。";
+            layer.text = "点击 / 空格 / 回车推进；数字键选择。开发叠层；遇到未实现演出即停止。";
         else if (layer.slot == "script_status") {
             layer.text = std::string(options_.text_preview ? "文字校阅" : "严格执行") + " | variant=" + options_.variant;
             if (message) layer.text += " | " + message->script + " | L0=" + std::to_string(message->id) + " | line=" + std::to_string(message->source_line);

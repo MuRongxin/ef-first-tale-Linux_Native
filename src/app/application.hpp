@@ -9,7 +9,8 @@ struct Options {
     std::string script;
     char variant{'e'};
     bool text_preview{}, audit_scripts{}, audit_resources{};
-    int trace_messages{};
+    int trace_messages{}, start_line{};
+    bool silent{};
 };
 int run(const Options& options);
 }

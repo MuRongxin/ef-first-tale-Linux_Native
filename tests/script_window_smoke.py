@@ -3,6 +3,7 @@
 import argparse
 import ctypes
 import json
+import hashlib
 import os
 from pathlib import Path
 import selectors
@@ -25,9 +26,22 @@ def main():
     shutil.copyfile(font, out / "font.ttc")
     shutil.copyfile(ROOT / "examples/script.scene.json", out / "view.json")
     manifest = {"version": 1, "design_size": [800, 600], "entry_scene": "view.json", "font": {"path": "font.ttc", "face": face}, "images": {}}
+    background = Image.new("RGB", (800, 1200), (20, 80, 120))
+    background.paste((80, 120, 20), (0, 600, 800, 1200))
+    background.save(out / "stage.png")
+    digest = hashlib.sha256((out / "stage.png").read_bytes()).hexdigest()
+    manifest.update(development=True, resources="catalog.json")
+    manifest["images"]["bg/stage.png"] = {"source_sha256": digest, "design_size": [800, 1200],
+        "variants": {"1": {"path": "stage.png", "pixels": [800, 1200]}}}
+    shutil.copyfile(ROOT / "tests/fixtures/audio-tone.ogg", out / "tone.ogg")
+    sound_digest = hashlib.sha256((out / "tone.ogg").read_bytes()).hexdigest()
+    catalog = {"version": 1, "entries": {
+        "bg/stage.png": {"kind": "image", "name": "stage.png", "tag": "bg", "source_sha256": digest},
+        "voice/tone": {"kind": "voice", "name": "tone", "tag": "voice", "source_sha256": sound_digest, "path": "tone.ogg"}}}
+    (out / "catalog.json").write_text(json.dumps(catalog))
     (out / "manifest.json").write_text(json.dumps(manifest))
     scripts = {
-        "start.sc": "#include common.sc\n[e].wait 20\n[j].wait 10000\n.message 100   键盘输入测试\n.wait 100\n.select 继续:next 结束:stop\n.label next\n.chain second.sc\n.label stop\n.message 900   不应到达\n.end\n",
+        "start.sc": "#include common.sc\n.transition 0 * 100\n.stage * stage.png 0 0\n[e].wait 2\n[j].wait 10000\n.message 100 tone  键盘输入测试\n.vscroll 600 100\n.endScroll f\n.wait 10\n.select 继续:next 结束:stop\n.label next\n.chain second.sc\n.label stop\n.message 900   不应到达\n.end\n",
         "common.sc": ".set counter = 2\n",
         "second.sc": ".if counter == 2 ok\n.message 999   不应到达\n.end\n.label ok\n.message 200   分支验证通过\n.end\n",
     }
@@ -35,7 +49,7 @@ def main():
         (out / name).write_text(text, encoding="utf-8")
     index = {"version": 1, "encoding": "utf-8", "view": "view.json", "scripts": {"scr/"+name: {"path": name} for name in scripts}}
     (out / "scripts/index.json").write_text(json.dumps(index))
-    environment = dict(os.environ, SDL_VIDEO_DRIVER="x11", LIBGL_ALWAYS_SOFTWARE="1")
+    environment = dict(os.environ, SDL_VIDEO_DRIVER="x11", SDL_AUDIO_DRIVER="dummy", LIBGL_ALWAYS_SOFTWARE="1")
     with window_manager(out, args.wm):
         x11 = ctypes.CDLL("libX11.so.6")
         xtest = ctypes.CDLL("libXtst.so.6")
@@ -78,10 +92,12 @@ def main():
             if process.returncode or step != 2 or b"message scr/second.sc L0=200 " not in output:
                 raise AssertionError(output.decode("utf-8", errors="replace"))
             with Image.open(out / "script.ppm") as screenshot:
-                pixels = screenshot.crop((65, 225, 500, 280)).convert("RGB").tobytes()
+                pixels = screenshot.crop((65, 580, 500, 630)).convert("RGB").tobytes()
                 if sum(1 for i in range(0, len(pixels), 3) if min(pixels[i:i+3]) > 170) < 100:
                     raise AssertionError("Script message glyphs did not render")
-            print("Script window smoke PASS: actual Space/1 input, variant, include, wait, choice, branch, chain, CJK frame")
+                if screenshot.convert("RGB").getpixel((900, 300)) != (80, 120, 20):
+                    raise AssertionError("Stage scroll did not reach the lower background")
+            print("Script window smoke PASS: stage, crossfade, voice output, scroll wait, actual Space/1 input, variant, include, wait, choice, branch, chain, CJK frame")
         finally:
             if process.poll() is None:
                 process.kill(); process.wait()

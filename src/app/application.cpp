@@ -1,5 +1,6 @@
 #include "app/application.hpp"
 #include "app/script_view.hpp"
+#include "audio/output.hpp"
 #include "core/display.hpp"
 #include "data/content.hpp"
 #include "render/renderer.hpp"
@@ -94,6 +95,11 @@ int run(const Options& options) {
     // Declared after the GL context: all glyph/texture destructors run before it.
     auto font = std::make_unique<Font>(content);
     font->validate(scene);
+    std::unique_ptr<AudioOutput> audio;
+    if (script && !options.text_preview) {
+        audio = std::make_unique<AudioOutput>(script->presentation().mixer(), !options.silent);
+        script->presentation().realtime_audio(audio->active());
+    }
     bool running = true;
     int frames = 0;
     int smoke_phase = 0;
@@ -177,7 +183,12 @@ int run(const Options& options) {
         checked(SDL_GetWindowSizeInPixels(window.handle, &width, &height), "Framebuffer size");
         const auto view = fit_viewport(width, height);
         if (view.width == 0 || view.height == 0 || (flags & SDL_WINDOW_MINIMIZED)) { SDL_Delay(20); continue; }
+        if (audio && audio->failed()) throw std::runtime_error("Audio output callback failed");
         renderer.begin(width, height, view, scene.background);
+        if (script && !options.text_preview) {
+            const auto& stage = script->presentation();
+            renderer.stage(content, stage.previous(), stage.current(), stage.progress(), stage.revision(), tier);
+        }
         for (const auto& layer : scene.layers) {
             switch (layer.kind) {
             case LayerKind::image: renderer.image(content, layer, tier); break;

@@ -245,6 +245,13 @@ nlohmann::json ScriptLibrary::audit_resources() const {
 ScriptRuntime::ScriptRuntime(Loader loader, Resolver resolver, std::string entry, ScriptOptions options)
     : loader_(std::move(loader)), resolver_(std::move(resolver)), options_(options), program_(loader_(entry)) {
     if (!program_) throw std::runtime_error("Script loader returned no program");
+    if (options_.start_line) {
+        const auto it = std::find_if(program_->instructions.begin(), program_->instructions.end(), [&](const Instruction& i) {
+            return i.script == entry && i.line >= options_.start_line;
+        });
+        if (it == program_->instructions.end()) throw std::runtime_error("No entry instruction at or after requested start line");
+        pc_ = static_cast<std::size_t>(it-program_->instructions.begin());
+    }
 }
 std::int64_t ScriptRuntime::variable(const std::string& name) const {
     if (const auto it = variables_.find(name); it != variables_.end()) return it->second;
@@ -261,12 +268,14 @@ void ScriptRuntime::jump(const std::string& label) {
 }
 void ScriptRuntime::update(double seconds) {
     if (!std::isfinite(seconds) || seconds < 0) throw std::runtime_error("Invalid script delta time");
+    if (host_.tick) host_.tick(seconds);
     if (state_ == ScriptState::waiting) {
         wait_remaining_ = std::max(0.0, wait_remaining_ - seconds);
         if (wait_remaining_ > 1e-9) return;
         state_ = ScriptState::running;
     }
     for (int budget = 10000; state_ == ScriptState::running; --budget) {
+        if (host_.busy && host_.busy()) break;
         if (budget == 0) throw std::runtime_error(program_->id + ": instruction budget exhausted (possible infinite loop)");
         if (pc_ == program_->instructions.size()) { state_ = ScriptState::ended; break; }
         const auto instruction = program_->instructions.at(pc_++);
@@ -287,15 +296,16 @@ void ScriptRuntime::execute(const Instruction& instruction) {
     const auto& cmd = instruction.command;
     const auto& args = instruction.args;
     if (cmd == ".message") {
-        if (!options_.text_preview && (!args[1].empty() || args[3].find("\\w") != std::string::npos || args[3].find("\\v") != std::string::npos || args[3].find("\\a") != std::string::npos))
+        if (!options_.text_preview && ((!args[1].empty() && !host_.message) || args[3].find("\\w") != std::string::npos || args[3].find("\\v") != std::string::npos || args[3].find("\\a") != std::string::npos))
             throw std::runtime_error("Voice/text timing is not implemented; use explicit --text-preview for proofreading");
-        if (!args[1].empty()) diagnostic(instruction, "text-preview: message voice is not played");
+        if (options_.text_preview && !args[1].empty()) diagnostic(instruction, "text-preview: message voice is not played");
         if (args[3].find("\\w") != std::string::npos || args[3].find("\\v") != std::string::npos || args[3].find("\\a") != std::string::npos)
             diagnostic(instruction, "text-preview: timing escapes are displayed without original timing");
         message_ = Message{instruction.script, args[1], args[2], args[3], static_cast<int>(integer(args[0])), instruction.line};
+        if (!options_.text_preview && host_.message) host_.message(*message_);
         state_ = ScriptState::message;
     } else if (cmd == ".wait") {
-        wait_remaining_ = static_cast<double>(integer(args[0])) / 1000.0;
+        wait_remaining_ = static_cast<double>(integer(args[0])) / 100.0;
         if (wait_remaining_ > 0) state_ = ScriptState::waiting;
     } else if (cmd == ".label") { /* indexed at compile time */ }
     else if (cmd == ".goto") jump(args[0]);
@@ -333,6 +343,7 @@ void ScriptRuntime::execute(const Instruction& instruction) {
         pc_ = 0;
         // Local variables survive .chain; route counters span multiple script files.
     } else if (cmd == ".end") state_ = ScriptState::ended;
+    else if (host_.command && !options_.text_preview && host_.command(instruction)) { /* host owns the command and any asynchronous wait */ }
     else if (options_.text_preview) diagnostic(instruction, "text-preview: unimplemented command " + cmd);
     else throw std::runtime_error("Unimplemented command (strict mode): " + cmd);
 }
