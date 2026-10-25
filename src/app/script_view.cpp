@@ -13,16 +13,21 @@ ScriptView::ScriptView(const Content& content, const Options& options)
       template_(Scene::load(content, content.read_json(content.script_index()).at("view").get<std::string>())), options_(options) {
     if (!options.text_preview) runtime_.set_host({
         [this](const Instruction& i) {
+            std::optional<Scene> outgoing;
+            if (i.command==".panel" && message_ui_) outgoing=scene();
             const bool handled=presentation_.command(i);
-            if (handled && i.command==".panel" && message_ui_) message_ui_->set_mode(presentation_.panel_mode());
+            if (handled && outgoing) message_ui_->transition_to(presentation_.panel_mode(),std::move(*outgoing));
             return handled;
         },
         [this](const Message& m) {
             presentation_.message(m);
             if (message_ui_) message_ui_->begin_message(presentation_.panel_mode(),m);
         },
-        [this](double seconds) { presentation_.update(seconds); },
-        [this] { return presentation_.busy(); },
+        [this](double seconds) {
+            presentation_.update(seconds);
+            if (message_ui_) message_ui_->update(seconds);
+        },
+        [this] { return presentation_.busy() || (message_ui_ && message_ui_->busy()); },
         [this] { return presentation_.mixer().playing(AudioChannel::voice); }});
     const auto index=content.read_json(content.script_index());
     if (!options.text_preview && content.has_resource_catalog() && index.contains("message_ui"))

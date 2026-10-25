@@ -80,6 +80,9 @@ if(EF_BUILD_APP)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(ef_panel_transition_tests tests/panel_transition_tests.cpp src/app/script_view.cpp)
+    target_link_libraries(ef_panel_transition_tests PRIVATE ef_core)
+    ef_compile_options(ef_panel_transition_tests)
     add_executable(ef_font_settings_tests tests/font_settings_tests.cpp)
     target_link_libraries(ef_font_settings_tests PRIVATE ef_core)
     ef_compile_options(ef_font_settings_tests)
@@ -144,6 +147,8 @@ if(BUILD_TESTING)
     add_test(NAME resources COMMAND ef_resource_tests)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME panel_transition COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/panel_transition_smoke.py --binary $<TARGET_FILE:ef_panel_transition_tests>)
         if(Freetype_FOUND)
             add_test(NAME font_faces COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/font_customization_smoke.py --faces-only

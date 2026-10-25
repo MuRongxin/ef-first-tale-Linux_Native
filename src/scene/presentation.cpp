@@ -130,7 +130,7 @@ bool Presentation::command(const Instruction& instruction) {
     } else if (cmd == ".panel") {
         count(instruction,1,1); const int mode = number(args[0]);
         if (mode < 0 || mode > 5) throw std::runtime_error("Unsupported panel mode");
-        panel_ = mode; // development overlay visibility; original panel variants await layout reconstruction
+        panel_ = mode; // Imported MessageUI owns panel geometry and transition timing.
     } else if (cmd == ".effect") {
         count(instruction,1,1);
         if (args[0] == "*") snow_.reset();

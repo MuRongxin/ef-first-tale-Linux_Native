@@ -1,6 +1,7 @@
 #include "scene/message_ui.hpp"
 #include "text/layout.hpp"
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -106,6 +107,34 @@ int main(int argc,char** argv) {
         Message bounded{"scr/test.sc","","",std::string(65535,'a'),12,1};
         window.begin_message(2,bounded);
         rejects([&] { window.begin_message(2,Message{"scr/test.sc","","","b",12,2}); });
+        MessageUI timed(content,"ui.json");
+        timed.transition_to(1,{});
+        require(timed.busy() && timed.progress()==0,"panel starts transparent and blocks");
+        timed.update(.009); require(timed.progress()==0,"panel alpha is quantized to 10ms ticks");
+        timed.update(.001); require(std::abs(timed.progress()-16.0f/255)<1e-6f,"panel alpha advances by 16 per tick");
+        timed.update(.14); require(timed.busy() && std::abs(timed.progress()-240.0f/255)<1e-6f,"last incomplete tick");
+        timed.update(.01); require(!timed.busy(),"panel finishes at 160ms");
+        Message old_page{"scr/test.sc","","姓名","旧文本",70,10};
+        timed.begin_message(1,old_page);
+        auto old_scene=timed.scene(1,old_page,"旧文本",1,false,0);
+        timed.transition_to(2,old_scene); timed.update(.08);
+        auto mixed=timed.scene(2,old_page,"旧文本",1,false,0);
+        require(mixed.layers.size()==4,"transition retains old background/name/body and new empty panel");
+        require(mixed.layers[2].text=="旧文本" && mixed.layers[2].visible_characters==1,"old text reveal is frozen");
+        require(std::abs(mixed.layers[0].color[3]-127.0f/255)<1e-6f && std::abs(mixed.layers.back().color[3]-128.0f/255)<1e-6f,"old/new layers use complementary native alpha");
+        timed.update(86400); require(!timed.busy(),"headless delta finishes transition");
+        auto clean=timed.scene(2,old_page,"旧文本",1,false,0);
+        require(clean.layers.size()==1,"completed transition cannot resurrect old runtime text");
+        timed.begin_message(2,old_page);
+        old_scene=timed.scene(2,old_page,"旧文本",3,false,0);
+        timed.transition_to(2,old_scene);
+        require(!timed.busy() && timed.scene(2,old_page,"旧文本",3,false,0).layers.back().text=="旧文本","same panel does not clear or wait");
+        timed.transition_to(0,old_scene); timed.update(.08);
+        require(timed.scene(0,old_page,"旧文本",3,false,0).layers.back().color[3]>0,"hidden target keeps outgoing layers until fade completes");
+        timed.update(.08); require(timed.scene(0,old_page,"旧文本",3,false,0).layers.empty(),"hidden panel releases old layers");
+        rejects([&] { timed.update(-1); });
+        rejects([&] { timed.transition_to(99,{}); });
+        require(!timed.busy(),"invalid target leaves previous state intact");
         ui["modes"]["3"]["body"]={125,530,800,70};
         std::ofstream(temp.path/"ui.json")<<ui.dump(); rejects([&] { MessageUI invalid(content,"ui.json"); });
         std::cout<<"Message UI tests PASS: external geometry, panel modes, speaker markers, reveal and animation\n";

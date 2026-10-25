@@ -66,8 +66,28 @@ MessageUI::MessageUI(const Content& content,const std::string& path) {
 }
 void MessageUI::set_mode(int mode) {
     if (mode_==mode) return;
+    if (mode!=0 && !modes_.contains(mode)) throw std::runtime_error("No imported layout for panel mode "+std::to_string(mode));
     mode_=mode;
+    transitioning_=false; outgoing_={}; transition_elapsed_=0;
     page_message_.reset(); active_message_.reset(); prefix_.clear(); current_text_.clear(); page_labels_.clear(); prefix_characters_=0;
+}
+void MessageUI::transition_to(int mode,Scene outgoing) {
+    if (mode==mode_) return;
+    set_mode(mode);
+    outgoing_=std::move(outgoing);
+    transitioning_=true;
+}
+void MessageUI::update(double seconds) {
+    if (!std::isfinite(seconds) || seconds<0) throw std::runtime_error("Invalid message UI delta time");
+    if (!transitioning_) return;
+    // Native default: 16 alpha units per 10ms tick, completing on tick 16.
+    transition_elapsed_=std::min(0.16,transition_elapsed_+seconds);
+    if (transition_elapsed_>=0.16-1e-12) { transitioning_=false; outgoing_={}; }
+}
+float MessageUI::progress() const {
+    if (!transitioning_) return 1;
+    const auto ticks=std::floor(transition_elapsed_*100+1e-9);
+    return static_cast<float>(std::min(255.0,ticks*16))/255;
 }
 void MessageUI::begin_message(int mode,const Message& message) {
     set_mode(mode);
@@ -100,6 +120,18 @@ std::string MessageUI::display_name(const std::string& raw) {
     return raw;
 }
 Scene MessageUI::scene(int mode,const std::optional<Message>& message,const std::string& text,
+                       std::size_t visible,bool ready,double elapsed) const {
+    auto result=current_scene(mode,message,text,visible,ready,elapsed);
+    if (!transitioning_) return result;
+    const float alpha=progress();
+    for (auto& layer : result.layers) layer.color[3]*=alpha;
+    auto old=outgoing_.layers;
+    for (auto& layer : old) layer.color[3]*=1-alpha;
+    old.insert(old.end(),result.layers.begin(),result.layers.end());
+    result.layers=std::move(old);
+    return result;
+}
+Scene MessageUI::current_scene(int mode,const std::optional<Message>& message,const std::string& text,
                        std::size_t visible,bool ready,double elapsed) const {
     Scene result; result.title="ef - the first tale."; result.background={0,0,0,1};
     if (!std::isfinite(elapsed) || elapsed<0 || elapsed>1e12) throw std::runtime_error("Invalid message animation clock");

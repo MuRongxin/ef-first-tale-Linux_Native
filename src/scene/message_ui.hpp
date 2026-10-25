@@ -7,7 +7,11 @@ class MessageUI {
 public:
     MessageUI(const Content& content,const std::string& path);
     // Feed panel/message events before building a scene; rendering never appends text.
-    void set_mode(int mode);
+    void set_mode(int mode); // Immediate reset for restore/audit; script events use transition_to.
+    void transition_to(int mode,Scene outgoing);
+    void update(double seconds);
+    [[nodiscard]] bool busy() const { return transitioning_; }
+    [[nodiscard]] float progress() const;
     void begin_message(int mode,const Message& message);
     [[nodiscard]] Scene scene(int mode,const std::optional<Message>& message,const std::string& text,
                               std::size_t visible,bool ready,double elapsed) const;
@@ -28,5 +32,10 @@ private:
     std::size_t prefix_characters_{};
     struct Label { std::string text; std::size_t byte_offset{}; };
     std::vector<Label> page_labels_;
+    Scene outgoing_;
+    double transition_elapsed_{};
+    bool transitioning_{};
+    [[nodiscard]] Scene current_scene(int mode,const std::optional<Message>& message,const std::string& text,
+                                      std::size_t visible,bool ready,double elapsed) const;
 };
 }

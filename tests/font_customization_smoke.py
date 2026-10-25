@@ -46,11 +46,11 @@ def main():
 
     # A missing custom CJK glyph renders through the packaged fallback, including a long message.
     run(['--font', str(latin), '--font-size', '150', '--script', 'scr/long.sc', '--silent',
-         '--text-speed', '0', '--frames', '5', '--screenshot', str(out/'custom.ppm')])
+         '--text-speed', '0', '--frames', '30', '--screenshot', str(out/'custom.ppm')])
     saved = json.loads(config.read_text())
     assert saved['file'] == str(latin) and saved['scale'] == 1.5
     for name in ('normal', 'cinema', 'nvl'):
-        run(['--script', 'scr/'+name+'.sc', '--silent', '--text-speed', '0', '--frames', '5',
+        run(['--script', 'scr/'+name+'.sc', '--silent', '--text-speed', '0', '--frames', '30',
              '--screenshot', str(out/(name+'.ppm'))])
     run(['--validate-content'])
     run(['--font', str(out/'missing.ttf'), '--frames', '1'], success=False)
