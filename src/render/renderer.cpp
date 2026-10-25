@@ -1,4 +1,5 @@
 #include "render/renderer.hpp"
+#include <SDL3/SDL_video.h>
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -50,7 +51,14 @@ Renderer::Renderer() {
     try {
         glewExperimental = GL_TRUE;
         const auto status = glewInit();
-        if (status != GLEW_OK) throw std::runtime_error(reinterpret_cast<const char*>(glewGetErrorString(status)));
+        // GLEW loads core GL before its optional GLX extension pass. SDL can own
+        // an EGL context (Wayland/X11-EGL); this renderer never uses GLX APIs.
+        const bool core_without_glx = status == GLEW_ERROR_NO_GLX_DISPLAY &&
+            SDL_GL_GetCurrentContext() && GLEW_VERSION_3_3;
+        if (status != GLEW_OK && !core_without_glx)
+            throw std::runtime_error("GLEW initialization (" + std::to_string(status) + "): " +
+                                     reinterpret_cast<const char*>(glewGetErrorString(status)));
+        if (core_without_glx) std::cerr << "[video] Using SDL EGL/core context without GLX extensions\n";
         // GLEW probes a legacy extension enum on some core contexts.
         while (glGetError() != GL_NO_ERROR) {}
         if (!GLEW_VERSION_3_3) throw std::runtime_error("OpenGL 3.3 Core is required");
