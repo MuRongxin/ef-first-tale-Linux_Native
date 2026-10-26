@@ -107,8 +107,68 @@ int main(int argc, char** argv) {
         mixer.stop(AudioChannel::bgm,0.01); mixer.advance(0.01);
         require(!mixer.playing(AudioChannel::bgm), "Headless fade completion");
         mixer.collect_finished();
+        mixer.stop_all();
+        // Independent outgoing/incoming envelopes, sample-accurate at the callback boundary.
+        auto outgoing=clip({0.4f}); std::weak_ptr<const AudioClip> old_pcm=outgoing;
+        mixer.play(AudioChannel::bgm,outgoing,true); outgoing.reset();
+        mixer.play(AudioChannel::bgm,clip({0.8f}),true,1,0,4.0/48000,4.0/48000);
+        mixer.mix(std::span(output.data(),8));
+        near(output[0],0.4f); near(output[2],0.5f); near(output[4],0.6f); near(output[6],0.7f);
+        require(!old_pcm.expired(),"Callback must defer outgoing PCM release");
+        mixer.collect_finished(); require(old_pcm.expired(),"Control thread reclaims completed outgoing PCM");
+        mixer.mix(std::span(output.data(),2)); near(output[0],0.8f);
+        mixer.stop_all();
+        mixer.play(AudioChannel::bgm,clip({0.4f}),true);
+        mixer.play(AudioChannel::bgm,clip({0.8f}),true,1,0,4.0/48000,8.0/48000);
+        mixer.mix(std::span(output.data(),4)); near(output[0],0.4f); near(output[2],0.55f);
+        // Interrupt halfway into fade-in. The oldest tail keeps its envelope.
+        mixer.play(AudioChannel::bgm,clip({0.2f}),true,1,0,2.0/48000,4.0/48000);
+        mixer.mix(std::span(output.data(),4)); near(output[0],0.7f); near(output[2],0.65f);
+        mixer.stop_current(AudioChannel::bgm);
+        require(!mixer.current_playing(AudioChannel::bgm) && mixer.playing(AudioChannel::bgm),"Current-only stop preserves earlier outgoing voices");
+        mixer.stop(AudioChannel::bgm);
+        require(!mixer.playing(AudioChannel::bgm),"Channel stop stops every outgoing voice");
+        mixer.mix(output); near(output[0],0);
+        mixer.play(AudioChannel::se,clip({0.2f}),true);
+        mixer.stop_current(AudioChannel::se,4.0/48000);
+        require(!mixer.current_playing(AudioChannel::se) && mixer.playing(AudioChannel::se),"Fading stop retires the current track immediately");
+        mixer.advance(2.0/48000); mixer.stop_current(AudioChannel::se,100);
+        mixer.advance(2.0/48000);
+        require(!mixer.playing(AudioChannel::se),"Repeated script stop must not extend an already outgoing envelope");
+        // Analytic silent clock and real mixing must produce the same future PCM.
+        AudioMixer mixed,analytic;
+        for (auto* actual : {&mixed,&analytic}) {
+            actual->play(AudioChannel::bgm,clip({0,0.2f,0.4f,0.6f},24000),true);
+            actual->play(AudioChannel::bgm,clip({0.5f,0.25f,0.1f},48000),true,0.75f,0,8.0/48000,12.0/48000);
+        }
+        mixed.mix(std::span(output.data(),12)); analytic.advance(6.0/48000);
+        std::array<float,12> expected{}; mixed.mix(expected); analytic.mix(output);
+        for (std::size_t n=0; n<output.size(); ++n) near(output[n],expected[n]);
+        mixer.stop_all();
+        mixer.play(AudioChannel::bgm,clip({0.4f}),true,1,0,1);
+        mixer.advance(.5); // Gain has changed during the control thread's hypothetical decode window.
+        mixer.play(AudioChannel::bgm,clip({0}),true,1,0,0,0,1);
+        mixer.mix(std::span(output.data(),2)); near(output[0],.2f);
+        mixer.advance(.25); mixer.mix(std::span(output.data(),2));
+        require(output[0]>.09f && output[0]<.11f,"Outgoing rate uses gain at commit, not before decode");
+        mixer.stop_all(); mixer.play(AudioChannel::bgm,clip({.2f}),true,.5f);
+        mixer.set_gain(AudioChannel::bgm,.25f,0,.25); mixer.advance(.5);
+        near(mixer.gain(AudioChannel::bgm),.375f);
+        mixer.stop_current(AudioChannel::bgm,0,.75); mixer.advance(.49);
+        require(mixer.playing(AudioChannel::bgm),"Rate-based stop ended before its current-gain duration");
+        mixer.advance(.02); require(!mixer.playing(AudioChannel::bgm),"Rate-based stop did not complete");
+        // Capacity exhaustion is atomic. An immediate replacement still works at the limit.
+        mixer.stop_all(); auto constant=clip({0.01f});
+        mixer.play(AudioChannel::bgm,constant,true);
+        for (int n=0; n<9; ++n) mixer.play(AudioChannel::bgm,constant,true,1,0,0,1);
+        rejects([&] { mixer.play(AudioChannel::bgm,clip({0.9f}),true,1,0,0,1); });
+        mixer.mix(std::span(output.data(),2)); near(output[0],0.1f);
+        mixer.play(AudioChannel::bgm,constant,true); mixer.stop_all();
+        require(!mixer.playing(AudioChannel::bgm),"Stop all clears the complete overlap pool");
         rejects([&] { mixer.play(AudioChannel::voice,clip({std::numeric_limits<float>::quiet_NaN()})); });
         rejects([&] { mixer.set_gain(AudioChannel::bgm,-1); });
+        rejects([&] { mixer.play(AudioChannel::bgm,constant,true,1,0,0,0,-1); });
+        rejects([&] { mixer.stop_current(AudioChannel::bgm,0,std::numeric_limits<double>::infinity()); });
         rejects([&] { mixer.advance(-1); });
         rejects([&] { mixer.mix(std::span(output.data(),3)); });
         for (int n = 1; n < argc; ++n) {

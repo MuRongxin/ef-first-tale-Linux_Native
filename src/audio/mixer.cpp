@@ -8,6 +8,9 @@ namespace {
 void gain_value(float gain) {
     if (!std::isfinite(gain) || gain < 0 || gain > 1) throw std::runtime_error("Audio gain must be 0..1");
 }
+void fade_rate(double rate) {
+    if (!std::isfinite(rate) || rate<0) throw std::runtime_error("Invalid audio fade rate");
+}
 }
 AudioMixer::AudioMixer(int output_rate) : output_rate_(output_rate) {
     if (output_rate < 8000 || output_rate > 192000) throw std::runtime_error("Audio output rate must be 8..192 kHz");
@@ -21,11 +24,13 @@ std::uint64_t AudioMixer::duration_frames(double seconds) const {
     if (!std::isfinite(seconds) || seconds < 0 || seconds > 1e9) throw std::runtime_error("Invalid audio duration");
     return static_cast<std::uint64_t>(std::ceil(seconds * output_rate_));
 }
-void AudioMixer::play(AudioChannel channel, std::shared_ptr<const AudioClip> clip, bool loop, float gain, float pan, double fade_in_seconds) {
+void AudioMixer::play(AudioChannel channel, std::shared_ptr<const AudioClip> clip, bool loop, float gain, float pan, double fade_in_seconds, double fade_out_seconds, double fade_out_rate) {
     const auto i = index(channel);
     gain_value(gain);
     if (!std::isfinite(pan) || pan < -1 || pan > 1) throw std::runtime_error("Audio pan must be -1..1");
     const auto fade = duration_frames(fade_in_seconds);
+    const auto requested_out = duration_frames(fade_out_seconds);
+    fade_rate(fade_out_rate);
     if (!clip || clip->sample_rate < 8000 || clip->sample_rate > 192000 || (clip->channels != 1 && clip->channels != 2) ||
         clip->samples.empty() || clip->samples.size() % static_cast<std::size_t>(clip->channels))
         throw std::runtime_error("Invalid audio clip");
@@ -35,35 +40,68 @@ void AudioMixer::play(AudioChannel channel, std::shared_ptr<const AudioClip> cli
     std::shared_ptr<const AudioClip> retired;
     {
         std::scoped_lock lock(mutex_);
-        retired = std::move(slots_[i].clip);
+        auto& current=slots_[i];
+        const auto out=fade_out_rate>0 ? duration_frames(current.gain/fade_out_rate) : requested_out;
+        const bool preserve=current.active && out && current.gain>0;
+        const auto active=std::count_if(slots_.begin(),slots_.end(),[](const Slot& slot) { return slot.active; });
+        if ((!current.active || preserve) && active>=static_cast<std::ptrdiff_t>(voice_limit))
+            throw std::runtime_error("Audio overlap voice limit reached");
+        if (preserve) {
+            auto tail=std::find_if(slots_.begin()+channel_count,slots_.end(),[](const Slot& slot) { return !slot.active; });
+            retired=std::move(tail->clip);
+            *tail=std::move(current);
+            tail->target=0; tail->gain_step=-tail->gain/static_cast<double>(out);
+            tail->ramp_left=out; tail->stop_after_ramp=true;
+        } else retired=std::move(current.clip);
         slots_[i] = Slot{std::move(clip), 0, fade ? 0.0 : gain, gain, fade ? gain/static_cast<double>(fade) : 0,
-                         pan, fade, true, loop, false};
+                         pan, fade, true, loop, false, channel};
     } // Retired PCM is freed outside the callback's lock.
 }
-void AudioMixer::stop(AudioChannel channel, double fade_out_seconds) {
-    const auto i = index(channel), frames = duration_frames(fade_out_seconds);
+void AudioMixer::stop_current(AudioChannel channel,double fade_out_seconds,double rate) {
+    const auto i=index(channel),requested=duration_frames(fade_out_seconds);
+    fade_rate(rate);
     std::shared_ptr<const AudioClip> retired;
     {
         std::scoped_lock lock(mutex_);
-        auto& slot = slots_[i];
-        if (!frames || !slot.active) { slot.active = false; retired = std::move(slot.clip); }
-        else {
-            slot.target = 0; slot.gain_step = -slot.gain/static_cast<double>(frames);
-            slot.ramp_left = frames; slot.stop_after_ramp = true;
+        auto& current=slots_[i];
+        const auto frames=rate>0 ? duration_frames(current.gain/rate) : requested;
+        if (current.active && frames && current.gain>0) {
+            auto tail=std::find_if(slots_.begin()+channel_count,slots_.end(),[](const Slot& slot) { return !slot.active; });
+            retired=std::move(tail->clip); *tail=std::move(current);
+            tail->target=0; tail->gain_step=-tail->gain/static_cast<double>(frames);
+            tail->ramp_left=frames; tail->stop_after_ramp=true;
+            current={};
+        } else { current.active=false; retired=std::move(current.clip); }
+    }
+}
+void AudioMixer::stop(AudioChannel channel,double fade_out_seconds) {
+    const auto i=index(channel),frames=duration_frames(fade_out_seconds);
+    std::array<std::shared_ptr<const AudioClip>,channel_count+voice_limit> retired;
+    {
+        std::scoped_lock lock(mutex_);
+        for (std::size_t n=0; n<slots_.size(); ++n) {
+            auto& slot=slots_[n];
+            if (n!=i && !(n>=channel_count && slot.channel==channel)) continue;
+            if (!frames || !slot.active) { slot.active=false; retired[n]=std::move(slot.clip); }
+            else {
+                slot.target=0; slot.gain_step=-slot.gain/static_cast<double>(frames);
+                slot.ramp_left=frames; slot.stop_after_ramp=true;
+            }
         }
     }
 }
-void AudioMixer::set_gain(AudioChannel channel, float gain, double fade_seconds) {
-    const auto i = index(channel), frames = duration_frames(fade_seconds);
-    gain_value(gain);
+void AudioMixer::set_gain(AudioChannel channel, float gain, double fade_seconds, double rate) {
+    const auto i = index(channel), requested = duration_frames(fade_seconds);
+    gain_value(gain); fade_rate(rate);
     std::scoped_lock lock(mutex_);
     auto& slot = slots_[i];
+    const auto frames=rate>0 ? duration_frames(std::abs(gain-slot.gain)/rate) : requested;
     slot.target = gain; slot.stop_after_ramp = false; slot.ramp_left = frames;
     slot.gain_step = frames ? (gain-slot.gain)/static_cast<double>(frames) : 0;
     if (!frames) slot.gain = gain;
 }
 void AudioMixer::stop_all() {
-    std::array<Slot,4> retired;
+    std::array<Slot,channel_count+voice_limit> retired;
     {
         std::scoped_lock lock(mutex_);
         std::swap(retired,slots_);
@@ -71,6 +109,12 @@ void AudioMixer::stop_all() {
 }
 bool AudioMixer::playing(AudioChannel channel) const {
     const auto i = index(channel);
+    std::scoped_lock lock(mutex_);
+    if (slots_[i].active) return true;
+    return std::any_of(slots_.begin()+channel_count,slots_.end(),[&](const Slot& slot) { return slot.active && slot.channel==channel; });
+}
+bool AudioMixer::current_playing(AudioChannel channel) const {
+    const auto i=index(channel);
     std::scoped_lock lock(mutex_);
     return slots_[i].active;
 }
@@ -137,7 +181,7 @@ void AudioMixer::advance(double seconds) {
     }
 }
 void AudioMixer::collect_finished() {
-    std::array<std::shared_ptr<const AudioClip>,4> retired;
+    std::array<std::shared_ptr<const AudioClip>,channel_count+voice_limit> retired;
     {
         std::scoped_lock lock(mutex_);
         for (std::size_t n = 0; n < slots_.size(); ++n)

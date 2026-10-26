@@ -31,6 +31,10 @@ int main() {
             const std::string id = std::string(kind)+"/tone";
             catalog["entries"][id] = {{"kind",kind},{"name","tone"},{"tag",kind},{"source_sha256",std::string(64,'b')},{"path","tone.ogg"}};
         }
+        for (const auto* kind : {"bgm","se"}) {
+            const std::string id=std::string(kind)+"/other";
+            catalog["entries"][id]={{"kind",kind},{"name","other"},{"tag",kind},{"source_sha256",std::string(64,'b')},{"path","tone.ogg"}};
+        }
         std::filesystem::copy_file(EF_AUDIO_FIXTURE,temp.path/"tone.ogg");
         std::ofstream(temp.path/"manifest.json") << manifest.dump();
         std::ofstream(temp.path/"catalog.json") << catalog.dump();
@@ -79,6 +83,33 @@ int main() {
         require(std::abs(stage.mixer().gain(AudioChannel::bgm)-0.5f)<1e-5f,"same BGM changes gain without replacing voice");
         command(".playBGM * 0 10 100\n"); stage.update(0.1);
         require(!stage.mixer().playing(AudioChannel::bgm),"BGM fade-out");
+        command(".playBGM tone 0 0 100\n");
+        command(".playBGM other 10 1 50\n");
+        require(!stage.busy() && stage.mixer().gain(AudioChannel::bgm)==0,"Cross-track BGM starts immediately without script wait");
+        stage.update(.025);
+        require(stage.mixer().gain(AudioChannel::bgm)>0,"Incoming BGM fades in");
+        command(".playBGM other 0 10 25\n");
+        require(std::abs(stage.mixer().gain(AudioChannel::bgm)-.25f)<1e-5f,"Same incoming BGM changes gain without a third voice");
+        command(".playBGM * 0 0\n");
+        require(!stage.mixer().current_playing(AudioChannel::bgm) && stage.mixer().playing(AudioChannel::bgm),"Script stop leaves prior outgoing BGM envelope running");
+        stage.update(2); require(!stage.mixer().playing(AudioChannel::bgm),"Old BGM envelope ends independently");
+        command(".playBGM tone 0 0 100\n");
+        command(".playBGM * 0 1\n");
+        require(!stage.mixer().current_playing(AudioChannel::bgm),"Script fade-stop invalidates current BGM identity immediately");
+        command(".playBGM tone 10 10 100\n");
+        require(stage.mixer().gain(AudioChannel::bgm)==0,"Stopped BGM starts a new fade-in rather than resuming the outgoing clip");
+        stage.update(2); stage.mixer().stop_all();
+        command(".playSE tone true 0 0\n"); stage.update(.01);
+        const auto unchanged_gain=stage.mixer().gain(AudioChannel::se);
+        command(".playSE tone true 100 100\n");
+        require(stage.mixer().gain(AudioChannel::se)==unchanged_gain,"Repeated looping SE does not restart or fade in again");
+        command(".playSE other true 0 1\n"); command(".playSE * 20\n");
+        stage.update(2); require(!stage.mixer().playing(AudioChannel::se),"Numeric loop parameter follows native false semantics");
+        command(".playSE tone false 0 0\n"); stage.update(.025);
+        command(".playSE tone false 0 0\n"); stage.update(.01);
+        require(stage.mixer().current_playing(AudioChannel::se),"Repeated non-looping SE replays from start");
+        command(".playSE2 tone true 0 0\n"); command(".playSE2 other true 0 2\n");
+        require(stage.mixer().playing(AudioChannel::se2),"Second SE channel supports independent overlap");
         std::cout << "Presentation tests PASS: scene placement, crossfade, scroll waits, panel, voiced messages and audio commands\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

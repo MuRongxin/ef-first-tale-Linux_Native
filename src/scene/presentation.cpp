@@ -31,13 +31,19 @@ Layer Presentation::image(const std::string& name, bool r18) const {
     result.width = static_cast<float>(asset.width); result.height = static_cast<float>(asset.height);
     return result;
 }
-void Presentation::play(AudioChannel channel, const std::string& kind, const std::string& name, bool r18, bool loop, float gain, double fade_seconds) {
-    if (name.empty() || name == "*") { mixer_.stop(channel, fade_seconds); return; }
+void Presentation::play(AudioChannel channel, const std::string& kind, const std::string& name, bool r18, bool loop, float gain, double fade_seconds, double fade_out_rate) {
+    if (name.empty() || name == "*") {
+        mixer_.stop_current(channel, fade_seconds, fade_out_rate);
+        playing_ids_.at(static_cast<std::size_t>(channel)).clear();
+        playing_loops_.at(static_cast<std::size_t>(channel))=false;
+        return;
+    }
     const auto& resource = content_.resource(kind, name, r18);
-    // Decode only on the control thread. Slots retain at most four complete clips.
+    // Decode only on the control thread. The mixer retains a bounded pool of current/outgoing clips.
     auto clip = decode_audio(content_.resolve(resource.path));
-    mixer_.play(channel, std::move(clip), loop, gain, 0, fade_seconds);
+    mixer_.play(channel, std::move(clip), loop, gain, 0, fade_seconds, 0, fade_out_rate);
     playing_ids_.at(static_cast<std::size_t>(channel)) = resource.id;
+    playing_loops_.at(static_cast<std::size_t>(channel))=loop;
 }
 void Presentation::voice(const std::string& name, bool r18) { play(AudioChannel::voice,"voice",name,r18,false,1,0); }
 void Presentation::message(const Message& value) { voice(value.voice, value.script.starts_with("r18_scr/")); }
@@ -148,22 +154,21 @@ bool Presentation::command(const Instruction& instruction) {
         const bool stop = args[0] == "*";
         const int in_speed = optional(args,bgm ? 1 : 2,bgm ? 1 : 2);
         const int out_speed = optional(args,bgm ? 2 : 3,bgm ? 1 : 2);
-        if (!bgm && args.size() > 1 && args[1] != "f" && args[1] != "t") throw std::runtime_error("Expected sound loop flag f or t");
+        // Native SE loop parsing tests the first character; corpus also uses "true".
+        const bool loop=bgm || (args.size()>1 && args[1].starts_with('t'));
         const int volume = bgm && args.size() > 3 ? number(args[3]) : 100;
         if (volume < 0 || volume > 100) throw std::runtime_error("BGM volume outside 0..100");
         const float gain = static_cast<float>(volume)/100;
-        // Replacing an active fading track needs two simultaneous decoder voices.
-        // Reject that case until cross-track fades are implemented.
-        const bool same_bgm = bgm && !stop && mixer_.playing(channel) &&
-            playing_ids_.at(static_cast<std::size_t>(channel)) == content_.resource("bgm",args[0],r18).id;
-        if (same_bgm) {
-            mixer_.set_gain(channel,gain,fade(in_speed,std::abs(gain-mixer_.gain(channel))));
+        const auto channel_index=static_cast<std::size_t>(channel);
+        const bool same_loop = !stop && loop && playing_loops_.at(channel_index) && mixer_.current_playing(channel) &&
+            playing_ids_.at(channel_index) == content_.resource(bgm ? "bgm" : "se",args[0],r18).id;
+        if (same_loop) {
+            if (bgm) mixer_.set_gain(channel,gain,0,in_speed>0 ? in_speed/2.0 : 0);
             return true;
         }
-        if (!stop && mixer_.playing(channel) && out_speed > 0)
-            throw std::runtime_error("Cross-track audio fades are not implemented");
-        if (stop) mixer_.stop(channel,fade(out_speed,mixer_.gain(channel)));
-        else play(channel,bgm ? "bgm" : "se",args[0],r18,bgm || (args.size()>1 && args[1]=="t"),gain,fade(in_speed,gain));
+        if (stop) play(channel,bgm ? "bgm" : "se",args[0],r18,false,0,0,out_speed>0 ? out_speed/2.0 : 0);
+        else play(channel,bgm ? "bgm" : "se",args[0],r18,loop,gain,
+                  fade(in_speed,gain),out_speed>0 ? out_speed/2.0 : 0);
     } else return false;
     return true;
 }

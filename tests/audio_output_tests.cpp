@@ -25,6 +25,13 @@ int main() {
             for (int n = 0; n < 100 && mixer.playing(AudioChannel::voice); ++n)
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
             if (output.failed() || mixer.playing(AudioChannel::voice)) throw std::runtime_error("Audio stream callback did not consume PCM");
+            mixer.play(AudioChannel::bgm,clip,true);
+            mixer.play(AudioChannel::bgm,clip,true,1,0,.01,.03);
+            mixer.stop_current(AudioChannel::bgm,.01);
+            for (int n=0; n<100 && mixer.playing(AudioChannel::bgm); ++n)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (output.failed() || mixer.playing(AudioChannel::bgm)) throw std::runtime_error("Audio stream did not complete outgoing fades");
+            mixer.collect_finished();
         }
         if (SDL_WasInit(SDL_INIT_AUDIO)) throw std::runtime_error("Audio subsystem reference leaked");
         std::cout << "Audio output PASS: disabled mode and silent SDL device callback/lifecycle\n";

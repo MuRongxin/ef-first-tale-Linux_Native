@@ -27,10 +27,11 @@ private:
     Layer image(const std::string& name, bool r18) const;
     void voice(const std::string& name, bool r18);
     void play(AudioChannel channel, const std::string& kind, const std::string& name,
-              bool r18, bool loop, float gain, double fade);
+              bool r18, bool loop, float gain, double fade, double fade_out_rate=0);
     const Content& content_;
     AudioMixer mixer_;
     std::array<std::string,4> playing_ids_;
+    std::array<bool,4> playing_loops_{};
     bool realtime_{};
     std::optional<Snow> snow_;
     std::vector<Layer> previous_, current_;
