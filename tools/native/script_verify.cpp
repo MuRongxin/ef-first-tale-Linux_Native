@@ -13,6 +13,7 @@ std::string canonical(std::string s) {
 }
 Json signature(const ef::Instruction& i) {
     auto args=i.args;
+    if (i.command==".playVoice" && !args.empty()) args.resize(1);
     if (i.command==".playSE" || i.command==".playSE2") {
         if (args.size()>1) args[1]=args[1].starts_with('t') ? "t" : "f";
     } else if (i.command==".movie" && args.size()>4) args[4]=!args[4].empty() && (args[4][0]=='f' || args[4][0]=='F' || args[4][0]=='0') ? "f" : "t";
@@ -36,7 +37,7 @@ Json trace(const ef::ScriptLibrary& library,const std::string& entry,char varian
         [&](const std::string& current,const std::string& target) {return library.resolve(current,target);},entry,{variant,false,0,0});
     Json out=Json::array();
     runtime.set_host({[&](const ef::Instruction& i) {
-        if ((i.command==".playVoice" && i.args.size()!=1) || i.command=="<unparsed>" || i.command.starts_with("..")) return false;
+        if ((i.command==".playVoice" && i.args.empty()) || i.command=="<unparsed>" || i.command.starts_with("..")) return false;
         out.push_back({{"host",signature(i)}});return true;
     }, {}, {}, {}, [] {return false;}, [&](const std::string& n,std::int64_t v) {out.push_back({{"set",n},{"value",v}});}});
     std::size_t messages=0;std::uint64_t serial=0;

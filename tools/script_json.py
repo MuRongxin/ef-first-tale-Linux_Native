@@ -91,6 +91,9 @@ def legacy_lines(text):
 
 def parameters(command, a):
     rule = OPS[command]
+    # Native FUN_004ea6e0 consumes only argument 0; trailing tokens are ignored.
+    if command == '.playVoice' and a:
+        a = a[:1]
     if not rule.get('special'):
         fields = rule['fields']
         if not rule['minimum'] <= len(a) <= len(fields):

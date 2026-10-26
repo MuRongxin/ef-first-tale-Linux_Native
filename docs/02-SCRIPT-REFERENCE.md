@@ -1,11 +1,12 @@
 # 02 — 脚本格式与命令参考（`.sc`，musica 引擎）
 
-## 当前记录入口（2026-10-26）
+## 当前记录入口（2026-10-27）
 
 **已确认语义、已实现范围、验证通过、原版画面对照是不同状态。** 下表指向最新专题记录；后面的历史命令表中，尚未同步的 I/U 简述不能覆盖这些专题结论。
 
 | 已记录项目 | 最新记录 | 范围与尚未确认部分 |
 |---|---|---|
+| playVoice 尾随参数 | [语音参数兼容](PLAYVOICE-20261027.md) | 只消费首项、尾项忽略；`* * 0` 已修复，JSON 显式异常清零 |
 | stage、基础转场、滚动、音频参数 | [场景与音频](RUNTIME-STAGE-AUDIO-20261025.md)、[音频交叠](AUDIO-CROSSFADE-20261026.md) | 基础图层/坐标、type0、滚动时钟和音频行为；特殊位置标志仍待确认 |
 | 消息转义、雪花、NVL、消息面板 | [文字与雪花](OPENING-TEXT-SNOW-20261025.md)、[NVL](NVL-FLOW-20261025.md)、[面板转场](PANEL-TRANSITION-20261025.md)、[消息UI](MESSAGE-UI-20261025.md) | 已支持范围、原版常量和移植近似分别记载；不代表全部UI已复刻 |
 | screen / overlay | [screen](SCREEN-20261026.md)、[overlay](SHAKE-OVERLAY-20261026.md) | 参数顺序、待用材质、整数公式、底边对齐、alpha及测试；高清插值顺序仍有差异 |
@@ -64,7 +65,7 @@ RTTI 枚举（exe 字符串 `. ?AVCommand*`）：Base, Comment, Stage, Message, 
 | `.movie` | `<id> <file> [w] [h] [flag] [x] [y]` (8) | 阻塞式视频播放：原版从 mov.paz 读取、按扩展名走 DirectShow（MPEG/AVI）；默认 w=800,h=600、flag=true（可中断/跳过）、x=y=0；`id` 解析但不参与播放；播放期间脚本暂停。O（2026-10-26 反汇编+移植实现，见 MOVIE-20261026.md；移植用 FFmpeg，开发包缺失时严格未支持） |
 | `.movie2` | —（未见） | 视频变体。U |
 | `.playBGM` | `<file|*> [fade_in_speed] [fade_out_speed] [volume_percent]` (427) | 播放/停止 BGM；`*`=停止，`0 *` 是立即淡入和淡出速度占位，不能解释为静音。O（2026-10-25 REA） |
-| `.playVoice` | `<voiceID|*>` (12) | 播放语音（`*`=停止）。I |
+| `.playVoice` | `<voiceID|*> [忽略的尾项…]` (12) | 只消费首项；`*`=立即停止。已确认，见 [取证与验证](PLAYVOICE-20261027.md)。 |
 | `.playSE` | `<file|*> [loop:t|f] [fade_in_speed] [fade_out_speed]` (259) | 音效；例 `kyoukai_door.ogg f 0 *` 为不循环、立即淡入，第四参数不是声像。O（2026-10-25 REA） |
 | `.playSE2` | 同上 (13) | 第二音效通道。I |
 | `.wait` | `<ticks:int>` (370) | 等待（10ms ticks，200=2秒、350=3.5秒）。O（2026-10-25 REA） |

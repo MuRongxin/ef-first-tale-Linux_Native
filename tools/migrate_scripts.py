@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 from prepare_content import safe_path, write_json
-from script_json import compile_script, encode
+from script_json import OPS, compile_script, encode, parameters
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,7 +33,7 @@ def run_verifier(binary, *args):
     return result.stdout
 
 
-def migrate(root, verifier, *, check_only=False, backup_parent=None):
+def migrate(root, verifier, *, check_only=False, backup_parent=None, upgrade_json=False):
     root, verifier = Path(root).resolve(), Path(verifier).resolve()
     if root == ROOT or not root.is_relative_to(ROOT) or root.is_relative_to(ROOT/'.git'):
         raise ValueError('Content must be a project subdirectory')
@@ -48,25 +48,47 @@ def migrate(root, verifier, *, check_only=False, backup_parent=None):
         manifest = json.loads(manifest_path.read_text())
         old_path = manifest.get('script_index', 'scripts/index.json')
         old = json.loads(safe_path(root, old_path).read_text())
-        if old['version'] == 2:
+        modern = old['version'] == 2
+        if modern and not upgrade_json:
             result = run_verifier(verifier, root, old_path)
             print('Already JSON; validation PASS')
             return {'already_json': True, 'audit': result}
-        if old['version'] != 1 or old.get('encoding') != 'utf-8':
-            raise ValueError('Expected UTF-8 legacy index v1')
+        if old['version'] not in (1, 2) or old.get('encoding') != 'utf-8' or (modern and old.get('format') != 'ef.script.v1'):
+            raise ValueError('Expected UTF-8 script index v1 or ef.script.v1 index v2')
         parent = Path(backup_parent).resolve() if backup_parent else ROOT/'work/script-migration'
         if not parent.is_relative_to(ROOT/'work'):
             raise ValueError('Backup must be under project work/')
         parent.mkdir(parents=True, exist_ok=True)
         backup = Path(tempfile.mkdtemp(prefix=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ-'), dir=parent))
         new = {**old, 'version': 2, 'format': 'ef.script.v1', 'scripts': {}}
+        upgraded = []
         for identifier, entry in old['scripts'].items():
             data = safe_path(root, entry['path']).read_bytes()
-            if 'utf8_sha256' in entry and hashlib.sha256(data).hexdigest() != entry['utf8_sha256']:
-                raise ValueError('Legacy source checksum mismatch: '+identifier)
-            document = compile_script(data.decode('utf-8'), identifier)
+            checksum = 'json_sha256' if modern else 'utf8_sha256'
+            if checksum in entry and hashlib.sha256(data).hexdigest() != entry[checksum]:
+                raise ValueError('Script checksum mismatch: '+identifier)
+            if modern:
+                document = json.loads(data)
+                if document.get('id') != identifier:
+                    raise ValueError('Mismatched script ID: '+identifier)
+                for node in document['instructions']:
+                    if node['op'] != 'unsupported':
+                        continue
+                    original = node['params']
+                    try:
+                        converted = parameters(original['command'], original['arguments'])
+                    except (KeyError, ValueError):
+                        continue
+                    upgraded.append({'script': identifier, 'source_line': node['source_line'], 'original': original})
+                    node.update(op=OPS[original['command']]['op'], params=converted)
+            else:
+                document = compile_script(data.decode('utf-8'), identifier)
             path, digest = blob(root, document, 'script.json')
             new['scripts'][identifier] = {**entry, 'path': path, 'json_sha256': digest}
+        if modern and not upgraded:
+            result = run_verifier(verifier, root, old_path)
+            print('JSON is current; validation PASS')
+            return {'already_json': True, 'upgraded_nodes': [], 'audit': result}
         new_path, _ = blob(root, new, 'scripts.json')
         candidate = {**manifest, 'script_index': new_path}
         if 'resources' in manifest:
@@ -77,9 +99,14 @@ def migrate(root, verifier, *, check_only=False, backup_parent=None):
                         raise ValueError('Resource catalog script is absent from index: '+identifier)
                     resource['path'] = new['scripts'][identifier]['path']
             candidate['resources'], _ = blob(root, catalog, 'resources.json')
-        output = run_verifier(verifier, root, old_path, new_path, backup/'verification.json')
+        if modern:
+            output = run_verifier(verifier, root, new_path)
+            report = {'verdict': 'PASS', 'mode': 'json-upgrade', 'scripts': len(new['scripts']), 'upgraded_nodes': upgraded}
+            write_json(backup/'verification.json', report)
+        else:
+            output = run_verifier(verifier, root, old_path, new_path, backup/'verification.json')
+            report = json.loads((backup/'verification.json').read_text())
         (backup/'verification.log').write_text(output)
-        report = json.loads((backup/'verification.json').read_text())
         report.update(backup=str(backup), candidate_index=new_path, published=False)
         if check_only:
             write_json(backup/'migration.json', report)
@@ -87,7 +114,7 @@ def migrate(root, verifier, *, check_only=False, backup_parent=None):
             return report
         # Back up every SC file and obsolete v1 index before changing the active package.
         legacy = []
-        for file in root.rglob('*'):
+        for file in ([] if modern else root.rglob('*')):
             if file.is_file() and file.suffix.lower() == '.sc':
                 legacy.append(file)
             elif file.is_file() and (file == safe_path(root, old_path) or file.name == 'index.json' or file.name.endswith('.scripts.json')):
@@ -146,7 +173,8 @@ def restore(backup):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(safe_path(backup/'legacy', relative), target)
         write_json(safe_path(root, 'manifest.json'), json.loads((backup/'manifest.before.json').read_text()))
-    print('Legacy content restored; it requires the pre-migration engine or the offline legacy verifier.')
+    print('Previous manifest restored.' if report.get('mode') == 'json-upgrade' else
+          'Legacy content restored; it requires the pre-migration engine or the offline legacy verifier.')
 
 
 def main():
@@ -154,13 +182,14 @@ def main():
     p.add_argument('--content', type=Path, default=ROOT/'content')
     p.add_argument('--verifier', type=Path, default=ROOT/'build/dev/ef_script_verify')
     p.add_argument('--check-only', action='store_true', help='Write candidate JSON and verify; keep the active manifest unchanged')
+    p.add_argument('--upgrade-json', action='store_true', help='Retry preserved unsupported nodes using the current offline compiler; publish verified JSON only')
     p.add_argument('--restore', type=Path, help='Restore a verified legacy backup')
     a = p.parse_args()
     try:
         if a.restore:
             restore(a.restore)
         else:
-            migrate(a.content, a.verifier, check_only=a.check_only)
+            migrate(a.content, a.verifier, check_only=a.check_only, upgrade_json=a.upgrade_json)
     except (ValueError, OSError, KeyError) as e:
         p.exit(1, f'migrate_scripts: {e}\n')
 

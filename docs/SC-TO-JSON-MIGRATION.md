@@ -12,13 +12,13 @@ work/script-migration/20261026T232012Z-du07tb4q/
 
 `migration.json` 记录备份文件的 SHA-256、候选索引和发布状态；`verification.json` 是迁移前语义对拍报告，`post-publish-audit.log` 是发布后 JSON 审计结果。备份、内容资源和验证产物不提交 Git。
 
-迁移后的活动索引：
+初次迁移的索引（下方说明后续升级）：
 
 ```text
 blobs/762faf759647cc80cc84447ddcc734e62e0020e8e6a863263e6e63fe51faf8fe.scripts.json
 ```
 
-`content/manifest.json` 的 `script_index` 指向它，资源目录中的 script 路径也同步指向 JSON。生产程序不链接 SC 词法解析器；旧解析器仅在离线验证库及需要它的测试中使用。
+2026-10-27 已进一步修复 voice 尾项兼容；当前活动索引与备份见 [语音参数兼容](PLAYVOICE-20261027.md)。`content/manifest.json` 的 `script_index` 选择活动索引，资源目录中的 script 路径同步指向 JSON。生产程序不链接 SC 词法解析器；旧解析器仅在离线验证库及需要它的测试中使用。
 
 ## 2. 对其他旧内容包执行迁移
 
@@ -108,7 +108,9 @@ e/j timing 分支以 `variant: "e"` / `"j"` 保存，原冒号变体以 `colon_v
 
 VM 对拍使用 5 个入口、两种变体、首/末选项策略，每组上限 250 条消息及 20,000 步。它比较控制流、对白状态及记录的宿主命令，不解码音视频，也不能代替全部剧情分支和画面保真验收。
 
-唯一保留异常是 `scr/205_01.sc:615` 的 `.playVoice * * 0`：现有宿主只接受一个参数，而原行有三个。它保存为 `op: "unsupported"`，保留原文、参数及原因。严格模式到达时停止；文字预览会报告并跳过。本次迁移没有猜测或修正其含义。`--audit-scripts` 的 `preserved_unsupported` 列出这类节点；原有 `unsupported` 统计表示核心控制流外的宿主命令，不等同于尚未实现的功能数。
+初次迁移时保留的唯一异常 `scr/205_01.sc:615` 的 `.playVoice * * 0` 已于 2026-10-27 通过原 exe 取证解决：原解析器只消费首项，尾随参数忽略，此处立即停止语音。当前包显式 unsupported 为 **0**；上表的 1 是初次迁移报告的历史值。完整证据与回归见 [语音参数兼容](PLAYVOICE-20261027.md)。
+
+已有初次 JSON 包使用 `python3 tools/migrate_scripts.py --upgrade-json --check-only` 预检，再执行 `python3 tools/migrate_scripts.py --upgrade-json` 发布即可，无需恢复 SC。工具保留升级前 manifest 和旧 blob，并报告每个升级节点；当前编译器仍不认识的节点继续保留。`--audit-scripts` 的 `preserved_unsupported` 列出显式异常；原有 `unsupported` 统计表示核心控制流外的宿主命令，不等同于尚未实现的功能数。
 
 可自行复查：
 

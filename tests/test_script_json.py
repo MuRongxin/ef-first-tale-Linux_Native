@@ -40,10 +40,58 @@ class CompilerTests(unittest.TestCase):
         self.assertEqual(list(references(source)), list(references(d)))
         self.assertEqual(len(list(references(d))), 7)
         self.assertEqual(compile_script('.playBGM * * 0\n', 'scr/a.sc')['instructions'][0]['params']['fade_in'], 2)
-        self.assertEqual(compile_script('.playVoice * * 0\n', 'scr/a.sc')['instructions'][0]['op'], 'unsupported')
+        self.assertEqual(compile_script('.playVoice * * 0\n', 'scr/a.sc')['instructions'][0]['params'], {'asset': None})
+        self.assertEqual(compile_script('.playVoice tone ignored 999\n', 'scr/a.sc')['instructions'][0]['params'], {'asset': 'tone'})
+        self.assertEqual(compile_script('.playVoice\n', 'scr/a.sc')['instructions'][0]['op'], 'unsupported')
 
     def test_schema_is_reproducible(self):
         subprocess.run([sys.executable, str(ROOT/'tools/generate_script_schema.py'), '--check'], check=True)
+
+    def test_json_upgrade_transaction_and_restore(self):
+        (ROOT/'work').mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='voice-upgrade-backup-', dir=ROOT/'work') as backups, tempfile.TemporaryDirectory(prefix='voice-upgrade-', dir=ROOT/'build') as temporary:
+            root = Path(temporary)
+            (root/'blobs').mkdir()
+            doc = compile_script('.playVoice * * 0\n.end\n', 'scr/test.sc')
+            doc['instructions'][0].update(op='unsupported', params={
+                'command': '.playVoice', 'arguments': ['*', '*', '0'],
+                'raw': '.playVoice * * 0', 'reason': 'Argument count'})
+            # Unconfirmed commands must remain explicit unsupported nodes.
+            doc['instructions'].append({'source_line': 3, 'op': 'unsupported', 'params': {
+                'command': '.unknown', 'arguments': ['*'], 'raw': '.unknown *', 'reason': 'unknown'}})
+            source = encode(doc)
+            (root/'old.script.json').write_bytes(source)
+            old = {'version': 2, 'format': 'ef.script.v1', 'encoding': 'utf-8', 'scripts': {
+                'scr/test.sc': {'path': 'old.script.json', 'json_sha256': hashlib.sha256(source).hexdigest()}}}
+            (root/'index.json').write_bytes(encode(old))
+            (root/'catalog.json').write_bytes(encode({'version': 1, 'entries': {'scr/test.sc': {
+                'kind': 'script', 'name': 'test.sc', 'tag': 'scr', 'path': 'old.script.json', 'source_sha256': 'a'*64}}}))
+            manifest = {'version': 1, 'design_size': [800,600], 'entry_scene': 'unused.json',
+                        'font': {'path':'unused.ttf'}, 'images': {}, 'script_index': 'index.json', 'resources': 'catalog.json'}
+            before = encode(manifest)
+            (root/'manifest.json').write_bytes(before)
+            def upgrade(binary=VERIFIER, **kw):
+                return migrate(root, binary, backup_parent=backups, upgrade_json=True, **kw)
+            with self.assertRaises(ValueError):
+                upgrade('/bin/false')
+            self.assertEqual((root/'manifest.json').read_bytes(), before)
+            self.assertFalse(upgrade(check_only=True)['published'])
+            self.assertEqual((root/'manifest.json').read_bytes(), before)
+            result = upgrade()
+            self.assertTrue(result['published'])
+            self.assertEqual(len(result['upgraded_nodes']), 1)
+            current = json.loads((root/'manifest.json').read_text())
+            index = json.loads((root/current['script_index']).read_text())
+            updated = json.loads((root/index['scripts']['scr/test.sc']['path']).read_text())
+            self.assertEqual(updated['instructions'][0], {'source_line': 1, 'op': 'voice', 'params': {'asset': None}})
+            self.assertEqual(updated['instructions'][2]['op'], 'unsupported')
+            catalog = json.loads((root/current['resources']).read_text())
+            self.assertEqual(catalog['entries']['scr/test.sc']['path'], index['scripts']['scr/test.sc']['path'])
+            self.assertEqual((root/'old.script.json').read_bytes(), source)
+            self.assertTrue(upgrade()['already_json'])
+            restore(result['backup'])
+            self.assertEqual(json.loads((root/'manifest.json').read_text()), manifest)
+            self.assertEqual(len(list(root.rglob('*.sc'))), 0)
 
     def test_atomic_migration_failure_backup_idempotence_and_restore(self):
         (ROOT/'work').mkdir(exist_ok=True)

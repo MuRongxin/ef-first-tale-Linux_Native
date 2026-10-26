@@ -301,7 +301,9 @@ bool Presentation::command(const Instruction& instruction) {
             stop_walking(); snow_.emplace(std::move(sprites),args[0] == "SnowH"); cutin_.reset();
         } else return false;
     } else if (cmd == ".playVoice") {
-        count(instruction,1,1); voice(args[0],r18);
+        // Native voice parser consumes only the first token; JSON already canonicalizes it.
+        if (args.empty()) throw std::runtime_error("playVoice requires an asset or *");
+        voice(args[0],r18);
     } else if (cmd == ".playBGM" || cmd == ".playSE" || cmd == ".playSE2") {
         count(instruction,1,4);
         const bool bgm = cmd == ".playBGM";
