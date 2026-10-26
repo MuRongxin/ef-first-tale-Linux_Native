@@ -1,4 +1,5 @@
 #include "scene/presentation.hpp"
+#include "scene/transition.hpp"
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -57,7 +58,10 @@ void Presentation::voice(const std::string& name, bool r18) { play(AudioChannel:
 void Presentation::message(const Message& value) { voice(value.voice, value.script.starts_with("r18_scr/")); }
 float Presentation::progress() const {
     if (!fading_) return 1;
-    return static_cast<float>(std::min(1.0, std::floor(elapsed_*100+1e-9) * active_speed_ / (active_type_==1 ? 5120.0 : 2560.0)));
+    const double ticks=std::floor(elapsed_*100+1e-9);
+    double step=ticks*active_speed_/10;
+    if (active_type_>=2) step=std::floor(step);
+    return static_cast<float>(std::min(1.0,step/transition_completion(active_type_)));
 }
 bool Presentation::busy() const { return shaking() || fading_ || (wait_scroll_ && scroll_.has_value()); }
 void Presentation::update(double seconds) {
@@ -103,7 +107,7 @@ bool Presentation::command(const Instruction& instruction) {
     } else if (cmd == ".transition") {
         count(instruction,3,3);
         const int type=number(args[0]),speed=number(args[2]);
-        if (speed<=0 || (type!=0 && type!=1) || (type==0 && args[1]!="*") || (type==1 && (args[1]=="*" || speed>255)))
+        if (speed<=0 || !supported_transition(type) || (type!=1 && args[1]!="*") || (type==1 && (args[1]=="*" || speed>255)) || (type==2 && speed!=20))
             throw std::runtime_error("Unsupported transition type, mask or speed");
         std::string mask;
         if (type==1) {
@@ -147,7 +151,7 @@ bool Presentation::command(const Instruction& instruction) {
         previous_ = current(); current_ = std::move(next); background_ = background;
         scroll_.reset(); wait_scroll_ = false;
         active_type_=transition_type_; active_speed_=speed_; active_mask_=transition_mask_;
-        ++revision_; elapsed_ = 0; fading_ = active_speed_ <= 255;
+        ++revision_; elapsed_ = 0; fading_ = active_type_>=2 || active_speed_ <= 255;
         if (!fading_) previous_.clear();
     } else if (cmd == ".vscroll" || cmd == ".hscroll" || cmd == ".scroll") {
         count(instruction,cmd == ".scroll" ? 3 : 2,cmd == ".scroll" ? 3 : 2);

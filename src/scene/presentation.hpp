@@ -27,6 +27,7 @@ public:
     bool shaking() const { return shake_ && !shake_->finished(); }
     ShakeFrame shake_frame() const { return shake_ ? shake_->frame() : ShakeFrame{}; }
     std::uint64_t shake_serial() const { return shake_serial_; }
+    int transition_type() const { return active_type_; }
     const std::string& transition_mask() const { return active_mask_; }
     AudioMixer& mixer() { return mixer_; }
     void realtime_audio(bool enabled) { realtime_ = enabled; }

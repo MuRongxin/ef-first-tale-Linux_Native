@@ -164,7 +164,7 @@ int main() {
         rejects([&] { command(".HSVfilter 0 0 0 bad 0 0\n"); });
         rejects([&] { command(".transition 1 wide.png 20\n"); });
         rejects([&] { command(".transition 1 missing 20\n"); });
-        rejects([&] { command(".transition 2 * 20\n"); });
+        rejects([&] { command(".transition 3 * 20\n"); });
         command(".stage frame.png wide.png 0 0 actor.png 400\n");
         require(stage.transition_mask()=="bg/mask.png" && stage.current()[0].hsv==std::array<int,3>{9,-25,-8},"Invalid pending updates must be atomic");
         stage.update(3); command(".HSVfilter 999 -999 999 -999 999 -999\n"); command(".transition 0 * 9999\n");

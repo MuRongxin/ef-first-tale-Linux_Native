@@ -1,5 +1,6 @@
 #include "render/renderer.hpp"
 #include "scene/color_filter.hpp"
+#include "scene/transition.hpp"
 #include <SDL3/SDL_video.h>
 #include <algorithm>
 #include <cmath>
@@ -153,6 +154,7 @@ uniform sampler2D old_image;
 uniform sampler2D mask_image;
 uniform int transition_enabled;
 uniform float mask_phase;
+uniform ivec4 transition_region;
 uniform sampler2D overlay_image;
 uniform int overlay_enabled;
 uniform vec4 overlay_map;
@@ -162,7 +164,32 @@ uniform vec4 screen_map;
 out vec4 output_color;
 void main() {
     vec4 source = texture(image, uv);
-    if (transition_enabled != 0) {
+    if (transition_enabled==2) {
+        ivec2 pixels=textureSize(image,0);
+        vec2 point=floor(vec2(uv.x,1.0-uv.y)*vec2(pixels));
+        vec2 offset=vec2(transition_region.xy)*vec2(pixels)/vec2(800,600);
+        vec2 extent=vec2(transition_region.zw)*vec2(pixels)/vec2(800,600);
+        ivec2 sample_point=ivec2(floor(offset+point*extent/vec2(pixels)));
+        sample_point=clamp(sample_point,ivec2(0),pixels-1);
+        vec3 next=floor(texelFetch(image,ivec2(sample_point.x,pixels.y-1-sample_point.y),0).rgb*255.0+0.5);
+        vec3 old=floor(texture(old_image,uv).rgb*255.0+0.5);
+        output_color=vec4(floor((old+next)/2.0)/255.0,1);
+        return;
+    }
+    if (transition_enabled==14 || transition_enabled==16 || transition_enabled==17) {
+        vec2 point=vec2(uv.x,1.0-uv.y);
+        vec2 extent=vec2(transition_region.zw);
+        if (any(lessThanEqual(extent,vec2(0))) || any(greaterThanEqual(point*vec2(800,600),extent))) {
+            output_color=vec4(texture(old_image,uv).rgb,1);return;
+        }
+        ivec2 pixels=textureSize(image,0);
+        vec2 pixel=floor(point*vec2(pixels));
+        vec2 target=extent*vec2(pixels)/vec2(800,600);
+        ivec2 sample_point=clamp(ivec2(floor(pixel*vec2(pixels)/target)),ivec2(0),pixels-1);
+        output_color=vec4(texelFetch(image,ivec2(sample_point.x,pixels.y-1-sample_point.y),0).rgb,1);
+        return;
+    }
+    if (transition_enabled == 1) {
         vec3 old=floor(texture(old_image,uv).rgb*255.0+0.5);
         vec3 next=floor(source.rgb*255.0+0.5);
         // The native mask loader inverts RGB before the transition reads its blue byte.
@@ -218,6 +245,7 @@ void main() {
         hsv_enabled_=glGetUniformLocation(program_,"hsv_enabled");
         transition_uniform_=glGetUniformLocation(program_,"transition_enabled");
         phase_uniform_=glGetUniformLocation(program_,"mask_phase");
+        region_uniform_=glGetUniformLocation(program_,"transition_region");
         overlay_uniform_=glGetUniformLocation(program_,"overlay_enabled");
         overlay_map_uniform_=glGetUniformLocation(program_,"overlay_map");
         constexpr float vertices[] = {0,0, 1,0, 0,1, 0,1, 1,0, 1,1};
@@ -241,6 +269,7 @@ void main() {
     } catch (...) { cleanup(); throw; }
 }
 void Renderer::cleanup() {
+    transition_history_.reset();transition_next_.reset();
     shake_source_.reset(); shake_history_.reset(); shake_next_.reset();
     if (shake_program_) glDeleteProgram(shake_program_);
     shake_program_=0;
@@ -265,7 +294,7 @@ void Renderer::begin(int width, int height, Viewport view, Color background) {
 void Renderer::quad(const Texture& texture, float x, float y, float w, float h, Color color) {
     quad_id(texture.id(), x, y, w, h, color, false);
 }
-void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map, std::array<int,3> hsv, GLuint old, GLuint mask, float phase) {
+void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map, std::array<int,3> hsv, GLuint old, GLuint mask, float phase,int transition_type,std::array<int,4> region) {
     glUseProgram(program_);
     glBindVertexArray(vao_);
     glActiveTexture(GL_TEXTURE0);
@@ -285,11 +314,12 @@ void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color
     glUniform1i(hsv_enabled_,hsv!=std::array<int,3>{} ? 1 : 0);
     const auto matrix=color_filter_coefficients(hsv);
     glUniform4iv(hsv_uniform_,1,matrix.data());
-    glUniform1i(transition_uniform_,mask ? 1 : 0);
-    if (mask) {
+    glUniform1i(transition_uniform_,mask ? 1 : transition_type);
+    if (mask || transition_type) {
         glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D,old);
         glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D,mask);
         glActiveTexture(GL_TEXTURE0); glUniform1f(phase_uniform_,phase);
+        glUniform4iv(region_uniform_,1,region.data());
     }
     glUniform4f(rect_uniform_, x, y, w, h);
     glUniform4fv(color_uniform_, 1, color.data());
@@ -299,6 +329,7 @@ void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color
 }
 void Renderer::rectangle(const Layer& layer) { quad(white_, layer.x, layer.y, layer.width, layer.height, layer.color); }
 void Renderer::clear_cache() {
+    transition_history_valid_=false;transition_history_.reset();transition_next_.reset();
     shake_valid_=false;
     shake_source_.reset(); shake_history_.reset(); shake_next_.reset();
     cache_.clear(); strips_.clear();
@@ -324,19 +355,28 @@ void Renderer::opaque_scene(const Content& content, const std::vector<Layer>& la
     }
 }
 void Renderer::stage(const Content& content, const std::vector<Layer>& previous, const std::vector<Layer>& current,
-                     float progress, std::uint64_t revision, AssetTier tier, const std::string& mask) {
+                     float progress, std::uint64_t revision, AssetTier tier, const std::string& mask,int transition_type) {
     if (!std::isfinite(progress)) throw std::runtime_error("Stage progress must be finite");
+    if (!supported_transition(transition_type) || (!mask.empty() && transition_type>1) || (transition_type==1 && mask.empty()))
+        throw std::runtime_error("Invalid stage transition configuration");
+    const int effect=mask.empty() ? transition_type : 1;
     checked_gl("Before stage composite");
     StageState state;
     const int width = state.viewport[2], height = state.viewport[3];
     if (width <= 0 || height <= 0) { snapshot_valid_ = false; return; }
+    if (effect!=2) {
+        transition_history_valid_=false;transition_history_.reset();transition_next_.reset();
+    }
     if (progress >= 1) {
+        if (effect==2 && snapshot_valid_ && transition_history_valid_ && snapshot_revision_==revision && snapshot_tier_==tier && snapshot_view_==state.viewport) {
+            glDisable(GL_BLEND);quad_id(current_target_.texture,0,0,800,600,{1,1,1,1},true);
+        } else opaque_scene(content,current,tier);
+        transition_history_valid_=false;transition_history_.reset();transition_next_.reset();
         snapshot_valid_ = false;
-        opaque_scene(content,current,tier);
         checked_gl("Draw current stage");
         return;
     }
-    const auto bytes = static_cast<std::uint64_t>(width)*static_cast<std::uint64_t>(height)*8;
+    const auto bytes = static_cast<std::uint64_t>(width)*static_cast<std::uint64_t>(height)*(effect==2 ? 16 : 8);
     if (width > max_texture_size_ || height > max_texture_size_ || bytes > composite_budget_)
         throw std::runtime_error("Stage framebuffer exceeds GPU dimensions or 256 MiB composite budget");
     const bool rebuild = !snapshot_valid_ || snapshot_revision_ != revision || snapshot_tier_ != tier || snapshot_view_ != state.viewport;
@@ -355,8 +395,39 @@ void Renderer::stage(const Content& content, const std::vector<Layer>& previous,
         snapshot_revision_ = revision; snapshot_tier_ = tier; snapshot_view_ = state.viewport;
         snapshot_valid_ = true;
     }
-    render(current_target_,current);
+    if (effect!=2 || rebuild || !transition_history_valid_) render(current_target_,current);
+    const int step=static_cast<int>(std::floor(std::max(0.0f,progress)*static_cast<float>(transition_completion(effect))+.0001f));
+    if (effect==2) {
+        const int sample=step/10; // Corpus speed20, native transition interval5 ticks.
+        if (rebuild || !transition_history_valid_ || sample<transition_sample_) {
+            transition_history_valid_=false;
+            transition_history_.resize(width,height);transition_next_.resize(width,height);
+            glDisable(GL_SCISSOR_TEST);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER,previous_target_.framebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,transition_history_.framebuffer);
+            glBlitFramebuffer(0,0,width,height,0,0,width,height,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+            transition_sample_=0;transition_history_valid_=true;
+        }
+        while (transition_sample_<sample) {
+            ++transition_sample_;
+            const int phase=transition_sample_*10;
+            glBindFramebuffer(GL_FRAMEBUFFER,transition_next_.framebuffer);
+            glViewport(0,0,width,height);glDisable(GL_SCISSOR_TEST);glDisable(GL_BLEND);
+            quad_id(phase<200 ? previous_target_.texture : current_target_.texture,0,0,800,600,{1,1,1,1},true,
+                    {0,0,1,1},0,{},0,{}, {},transition_history_.texture,0,0,2,zoom_transition_region(phase));
+            std::swap(transition_history_.texture,transition_next_.texture);
+            std::swap(transition_history_.framebuffer,transition_next_.framebuffer);
+        }
+        state.target();glDisable(GL_BLEND);
+        quad_id(transition_history_.texture,0,0,800,600,{1,1,1,1},true);
+        checked_gl("Zoom history transition");return;
+    }
     state.target();
+    if (effect==14 || effect==16 || effect==17) {
+        glDisable(GL_BLEND);
+        quad_id(current_target_.texture,0,0,800,600,{1,1,1,1},true,{0,0,1,1},0,{},0,{}, {},previous_target_.texture,0,0,effect,transition_region(effect,step));
+        checked_gl("Expansion transition");return;
+    }
     if (!mask.empty()) {
         const auto mask_id=texture(content,mask,tier).texture.id();
         glDisable(GL_BLEND);
