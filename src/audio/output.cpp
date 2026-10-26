@@ -5,22 +5,40 @@
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <iostream>
 
 namespace ef {
+namespace {
+std::string output_error(const char* phase) {
+    std::string result=std::string(phase)+": "+SDL_GetError()+"; compiled audio drivers: ";
+    bool native=false;
+    for (int n=0; n<SDL_GetNumAudioDrivers(); ++n) {
+        const std::string driver=SDL_GetAudioDriver(n);
+        if (n) result+=", ";
+        result+=driver;
+        if (driver!="dummy" && driver!="disk") native=true;
+    }
+    if (!native) result+=". This SDL build lacks a native audio backend; install ALSA/PipeWire/PulseAudio development headers and rebuild SDL.";
+    return result;
+}
+}
 AudioOutput::AudioOutput(AudioMixer& mixer, bool enabled) : mixer_(mixer) {
     if (!enabled) return;
-    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) throw std::runtime_error(std::string("SDL audio initialization: ") + SDL_GetError());
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) throw std::runtime_error(output_error("SDL audio initialization"));
     initialized_ = true;
     const SDL_AudioSpec spec{SDL_AUDIO_F32, 2, mixer_.sample_rate()};
     stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, callback, this);
     if (!stream_ || !SDL_ResumeAudioStreamDevice(stream_)) {
-        const std::string error = SDL_GetError();
+        const std::string error = output_error("SDL audio output");
         if (stream_) SDL_DestroyAudioStream(stream_);
         stream_ = nullptr;
         SDL_QuitSubSystem(SDL_INIT_AUDIO);
         initialized_ = false;
-        throw std::runtime_error("SDL audio output: " + error);
+        throw std::runtime_error(error);
     }
+    const auto* driver=SDL_GetCurrentAudioDriver();
+    const auto* device=SDL_GetAudioDeviceName(SDL_GetAudioStreamDevice(stream_));
+    std::cout << "[audio] driver=" << (driver ? driver : "unknown") << " device=" << (device ? device : "default") << '\n';
 }
 AudioOutput::~AudioOutput() {
     if (stream_) SDL_DestroyAudioStream(stream_);

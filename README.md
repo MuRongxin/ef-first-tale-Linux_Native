@@ -13,6 +13,7 @@
 ```bash
 sudo apt-get install build-essential cmake ninja-build pkg-config \
     libpng-dev libfreetype-dev libglew-dev libgl1-mesa-dev libegl-dev \
+    libasound2-dev libpipewire-0.3-dev libspa-0.2-dev libpulse-dev \
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
     libwayland-dev libxkbcommon-dev libdecor-0-dev \
     python3-pil python3-numpy python3-pycryptodome fontconfig fonts-noto-cjk fonts-dejavu-core ffmpeg
@@ -154,7 +155,10 @@ GPU 按原生逐通道公式计算滤色并保留 alpha，独立色带缓存不�
 
 特殊转场、立绘位置标志及其余未实现特效仍会停止。
 雪花运动与淡化已按原程序重建，随机种子采用固定值，尚未完成逐像素对照。
-`--silent` 不打开音频设备，继续推进音频时钟；无头 `--trace-messages N` 自动采用此行为。
+正常游玩直接使用默认音频输出，启动日志会显示实际 SDL 后端和设备名称。
+编译 SDL 前须安装上面的音频开发依赖；只有运行时音频服务而缺少开发头文件，可能构建出仅含 `dummy` / `disk` 的 SDL。
+补齐依赖后执行 `cmake --preset dev`、`cmake --build --preset dev` 重新检测并编译；音频错误会列出已编入的后端。
+`--silent` 用于主动静音或无头检查：不打开音频设备，继续推进音频时钟；无头 `--trace-messages N` 自动采用此行为。
 `--start-line N` 可从源文件行号开始验证片段，不恢复此前的变量、场景或特效。
 完整数据包的开场可用 `--script scr/000_01mugai.sc --trace-messages 428` 作无头检查；
 覆盖开场427条对白和下一章首条对白，两种变体均已通过。无头检查会快进时间，不能代替画面和音频保真对照。
