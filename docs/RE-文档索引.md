@@ -23,6 +23,7 @@
 | `docs/07-汉化补丁机制.md` | 汉化 DLL 做了什么：67 条内存补丁分类、SJIS→GBK 文本引擎改造、字体/枚举、IAT 与目录重定向、签名溯源、移植结论 | 理解汉化版行为/文本处理 |
 | `docs/patch_table_中文.tsv` | 67 条补丁逐条表（RVA/长度/原字节→新字节/作用） | 核对汉化细节 |
 | `docs/06-RE-ROADMAP.md` | 仍未攻克的项与具体地址/攻法（命令 Execute、`.ani`、UI 坐标、排版常量） | 后续逆向 |
+| `docs/MOVIE-20261026.md` | `.movie` 命令参数/阻塞语义/DirectShow 播放链取证与移植方案（含 FFmpeg 依赖） | 演出/视频实现者 |
 | `docs/ASSET-PIPELINE.md` | **图像资源全量解包 + HD 高清化清单**（5,989 文件/1.87GB、分类、去重、超分计划） | 资源管线/高清化 |
 | `docs/UPSCALE-REMOTE-PIPELINE.md` | **远端 PyTorch 4x/8x 流水线的输入/输出适配**（源/输出映射、命令、部署、边界） | 高清化执行 |
 | `docs/UPSCALE-TOOLCHAIN.md` | **高清化工具链**（本机 Real-ESRGAN ncnn-vulkan 实测、模型选型、逐条命令、倍率建议） | 高清化/渲染 |

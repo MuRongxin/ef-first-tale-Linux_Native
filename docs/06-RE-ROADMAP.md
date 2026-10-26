@@ -22,6 +22,21 @@
   缺失 0、**歧义 0**（原 19）、包内丢失 0，退出码 0。
 - r18 仅覆盖对应基础归档类别属于移植版显式策略（与归档打开顺序一致），仍不能表述为本轮新取得的"运行期覆盖"证据。
 
+**已取证：`.movie`（2026-10-26，实现待 FFmpeg 开发包）**：
+- `CommandMovie`：命令名 `0x578588`、注册 `0x4cb3c8`、对象 0x78、构造 `0x4ec7b0`、Parse `0x4ec3a0`、Execute `0x4ec850`。
+  参数至少 4 个：`<id> <file> [w] [h] [flag] [x] [y]`；默认 w=800/h=600、flag=true、x=y=0；
+  flag 首字符 `0/f/F` 为 false，其余/缺省 true；`id` 解析保存但 Execute 不读取。
+- 播放链：Execute → `0x4db670`（清场景、取 mov.paz 读取器 slot9=`0x5e1738`）→ `0x4fd820`（读取器检查文件）→
+  `0x4fcda0` 启动全局播放器 `0x5aa320`；按扩展名 `.mpg/.mpeg/.avi` 建立 DirectShow 图
+  （`CFileStream` vtable `0x575a10`，filter 名 `MPEG-I Stream Splitter/MPEG Video Decoder/MPEG Audio Decoder/
+  Video Renderer/Sound Renderer/VMR7`，音频 48000）。
+- 阻塞：movie active 时主循环（`0x4bf368` 起）调用 `0x4fc3b0` 绘制并暂停脚本；`0x4fc9e0` 为播放/消息循环，
+  播完 `0x4fc750` 释放。flag≠0 时中断输入会写配置键 `movieInterrupted` 后停止（=可跳过），flag=0 跳过该分支（不可跳过）。
+- 实现方案与依赖：content 已有 4 个视频（`mov/op_logo.mpg` 等，H.264 MKV 3840×2880）；
+  移植需 FFmpeg 开发包（libavcodec/format/util/swscale/swresample-dev；本机仅运行库），
+  解码→纹理按 `(x,y,w,h)` 绘制、音频送现有 mixer；先做命令/阻塞状态机，再接视频管线。详见 `MOVIE-20261026.md`。
+- 残余：flag 动态按键验证、`.movie2`、`id` 其它用途、DirectShow 渲染细节、`movieInterrupted` 的存档作用。
+
 **已知线索**（本目录 exe，PE32 i386）：
 - 命令分派函数：`0x4CB1A8 – 0x4CCE8F`（按命令名串匹配，逐命令 `new` 命令对象后登记）。命令名表在 VA `0x578570–0x578740`（46 个）。
 - 命令类 RTTI 名可枚举（`strings ef_first_AA.exe | grep '\.?AVCommand'`，52 个类，含 `CommandBase`）；对象大小示例：`.panel` 命令对象 0x78 字节、`.transition` 0xDC 字节（`push 0x78/0xDC; call operator new`）。

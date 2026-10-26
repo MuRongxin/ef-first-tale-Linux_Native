@@ -6,7 +6,7 @@
 
 ## 1. 当前 HEAD 与工作区
 
-- 资源优先级基线：`ce35020 feat: 按原版优先级解析 bg/st 同名立绘`；docs/ 已随本文档提交一并入库；`AGENTS.md` 仍为本地协作说明不提交，`assets/`、`work/`、`analysis/`、`content/` 继续不入库。`.frame` 语料范围现已实现，计时/电量/转场快照与测试记录见 [FRAME-AUDIT-20261026.md](FRAME-AUDIT-20261026.md)；下一步继续 `.stage` 逗号位置参数。
+- 最新提交：`dbaa84d feat: 实现取景器计时、电量与舞台快照`（含 `.frame`/取景器实现）；上一基线 `ce35020 feat: 按原版优先级解析 bg/st 同名立绘`。docs/ 已随文档提交入库；`AGENTS.md` 仍为本地协作说明不提交，`assets/`、`work/`、`analysis/`、`content/` 继续不入库。`.frame` 语料范围现已实现，计时/电量/转场快照与测试记录见 [FRAME-AUDIT-20261026.md](FRAME-AUDIT-20261026.md)；下一步继续 `.stage` 逗号位置参数。
 - 近期提交（2026-10-25/26，尾部）：
   - `06ca3da` 接通基础场景演出与原版音频播放
   - `a6ebf06` 全屏文本续写与分组清页
@@ -19,7 +19,7 @@
   - `3004b44` speed>255 转场对所有类型立即完成
   - `ce35020` 按原版优先级解析 bg/st 同名立绘
 - 本机 `build/dev` 自动测试当前 **25/25 PASS**，core ASan **18/18 PASS**；最近实现记录文档：
-  `RUNTIME-STAGE-AUDIO-20261025.md`、`MESSAGE-UI-20261025.md`、`PANEL-TRANSITION-20261025.md`、`NVL-FLOW-20261025.md`、`AUDIO-CROSSFADE-20261026.md`、`SCREEN-20261026.md`、`SHAKE-OVERLAY-20261026.md`、`HSV-MASK-20261026.md`、`CUTIN-WALKING-20261026.md`、`SPECIAL-TRANSITION-20261026.md`（文档已纳入 docs/；原始证据与运行产物不入库）。
+  `RUNTIME-STAGE-AUDIO-20261025.md`、`MESSAGE-UI-20261025.md`、`PANEL-TRANSITION-20261025.md`、`NVL-FLOW-20261025.md`、`AUDIO-CROSSFADE-20261026.md`、`SCREEN-20261026.md`、`SHAKE-OVERLAY-20261026.md`、`HSV-MASK-20261026.md`、`CUTIN-WALKING-20261026.md`、`SPECIAL-TRANSITION-20261026.md`、`MOVIE-20261026.md`（文档已纳入 docs/；原始证据与运行产物不入库）。
 
 ## 2. 里程碑状态
 
@@ -57,7 +57,7 @@
 
 ## 5. 下一步建议（按依赖顺序）
 
-1. **补齐演出命令**：`.frame`（28 行/7 脚本）→ `.stage` 逗号位置注解 token（如 `600,75`，34 行/4 脚本）→ `.movie`；再按 `SPECIAL-TRANSITION-20261026.md` 扩 type3..13/15/18；已实现的 `.transition` type0/1/2/14/16/17 只需原版逐帧对拍收尾；bg/st 同名立绘优先级已解决（st 优先、bg 回退，审计歧义归零）；
+1. **补齐演出命令**：`.frame`（已提交 `dbaa84d`）→ `.stage` 逗号位置注解 token（用户实现中，如 `600,75`，34 行/4 脚本）→ **`.movie`（已取证，见 MOVIE-20261026.md；实现待 FFmpeg 开发包：先做解析/阻塞状态机，再接视频管线）**；再按 `SPECIAL-TRANSITION-20261026.md` 扩 type3..13/15/18；已实现的 `.transition` type0/1/2/14/16/17 只需原版逐帧对拍收尾；bg/st 同名立绘优先级已解决（st 优先、bg 回退，审计歧义归零）；
 2. **完整 UI 复刻（M3，全部 UI）**：按已逆向的消息窗经验，逐屏逆向标题/设置/存读档/回想/图鉴/音乐/确认框/字体选择；UI 图 AI 超分 + **去烧死文字**，文字全部 FreeType 重绘；
 3. **`.ani` 动画（M4 前置）**：逆向内部帧结构 → PNG 序列 + `anim.json` + 引擎播放器（坐标随配对 PNG 倍率缩放）；
 4. **视频播放**（H.264 已在 content 中）与 **KTX2 缓存**（方案 A：WebP 分发 + 首次/后台转码）；
