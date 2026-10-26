@@ -280,7 +280,6 @@ int run(const Options& options) {
         if (script && !options.text_preview) {
             const auto& stage = script->presentation();
             renderer.stage(content, stage.previous(), stage.current(), stage.progress(), stage.revision(), tier, stage.transition_mask());
-            for (const auto& layer : stage.effects()) renderer.image(content,layer,tier);
         }
         for (const auto& layer : rendered_scene.layers) {
             switch (layer.kind) {

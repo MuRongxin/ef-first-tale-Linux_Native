@@ -75,6 +75,11 @@ std::vector<Instruction> parse_script(std::string_view text, const std::string& 
         if (!raw.empty() && raw.back() == '\r') raw.pop_back();
         const auto first = raw.find_first_not_of(" \t");
         if (first == std::string::npos) continue;
+        // The native loader drops these unmatched production-note tokens after stripping [e]/[j].
+        // Limit compatibility to the full-width semicolon; unknown command text remains strict.
+        std::string_view note=std::string_view(raw).substr(first);
+        if (note.starts_with("[e]") || note.starts_with("[j]")) note.remove_prefix(3);
+        if (note.starts_with("；")) continue;
         Instruction instruction{id, {}, raw, line_number, 0, {}};
         std::string line = raw.substr(first);
         if (line.starts_with("[e]:.") || line.starts_with("[j]:.")) {

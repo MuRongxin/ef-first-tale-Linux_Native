@@ -173,6 +173,28 @@ int main() {
         require(stage.transition_mask().empty() && !stage.busy(),"Type zero should clear masked transition");
         command(".HSVfilter 0 0 0 0 0 0\n"); command(".stage frame.png wide.png 0 0 actor.png 400\n");
         for (const auto& layer : stage.current()) require(layer.hsv==std::array<int,3>{},"Zero HSV reset");
+        command(".effect Cutin mask.png -10\n");
+        require(!stage.busy() && stage.effects().size()==1 && stage.effects()[0].x==800,"Cutin must be nonblocking");
+        rejects([&] { command(".effect Cutin missing -1\n"); });
+        require(stage.effects().size()==1,"Failed effect replaced a valid effect");
+        stage.update(2);require(stage.effects()[0].x==0,"Cutin did not enter");
+        command(".stage frame.png mask.png 0 0\n");require(stage.effects().size()==1,"Stage removed a held Cutin");
+        const auto cut_scene=stage.current();
+        require(cut_scene.size()==3 && cut_scene[0].part==StagePart::background && cut_scene[1].part==StagePart::none && cut_scene[2].part==StagePart::frame,"Cutin must be below the foreground frame");
+        command(".effect fadeout\n");stage.update(2);require(stage.effects().empty(),"Cutin did not leave after fadeout");
+        command(".stage frame.png mask.png 0 0 mask.png 400\n");
+        command(".effect WScroll2 * 60 -2\n");stage.update(.3);
+        const auto moving=stage.current();
+        require(!stage.busy() && moving[0].x==-799,"Walking must run while script can advance");
+        command(".effect WScroll2 * 60 -2\n");require(stage.current()[0].x==moving[0].x,"Repeated walking restarted the phase");
+        command(".transition 0 * 20\n");
+        command(".stage frame.png mask.png 0 0 mask.png 400\n");
+        require(stage.previous()[0].x==moving[0].x && stage.current()[0].x==moving[0].x,"Stage snapshot or walking rebinding lost motion");
+        command(".effect end\n");const auto stopped=stage.current();stage.update(2);
+        require(stage.current()[0].x==stopped[0].x,"Walking end should retain the last canvas");
+        require(!command(".effect Unknown * 60 -2\n"),"Unknown multi-argument effect was swallowed");
+        rejects([&] { command(".effect Cutin mask.png bad\n"); });
+        rejects([&] { command(".effect WScroll2 * 0 -2\n"); });
         std::cout << "Presentation tests PASS: scene placement, crossfade, scroll waits, panel, voiced messages and audio commands\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

@@ -1,4 +1,6 @@
 #include "render/renderer.hpp"
+#include "scene/cutin.hpp"
+#include "scene/walking.hpp"
 #include <SDL3/SDL.h>
 #include <png.h>
 #include <algorithm>
@@ -47,10 +49,10 @@ struct Window {
     }
     ~Window() { SDL_GL_DestroyContext(context); SDL_DestroyWindow(window); SDL_Quit(); }
 };
-void png(const std::filesystem::path& path, int size, Pixel top, Pixel bottom) {
+void png(const std::filesystem::path& path, int size, Pixel top, Pixel bottom, bool horizontal=false) {
     std::vector<unsigned char> pixels(static_cast<std::size_t>(size)*static_cast<std::size_t>(size)*4);
     for (int y = 0; y < size; ++y) for (int x = 0; x < size; ++x) {
-        const auto& color = y < size/2 ? top : bottom;
+        const auto& color = (horizontal ? x : y) < size/2 ? top : bottom;
         const auto offset = (static_cast<std::size_t>(y)*static_cast<std::size_t>(size)+static_cast<std::size_t>(x))*4;
         std::copy(color.begin(),color.end(),pixels.begin()+static_cast<std::ptrdiff_t>(offset));
     }
@@ -97,9 +99,11 @@ int main() {
         png(temp.path/"new8.png",16,{0,255,255,128},{255,255,255,128});
         png(temp.path/"mask4.png",8,{0,0,0,255},{255,255,255,255});
         png(temp.path/"mask8.png",16,{0,0,0,255},{255,255,255,255});
+        png(temp.path/"walk4.png",8,{255,0,0,255},{0,255,0,255},true);
+        png(temp.path/"walk8.png",16,{255,0,0,255},{0,255,0,255},true);
         nlohmann::json manifest{{"version",1},{"design_size",{800,600}},{"entry_scene","unused.scene.json"},
             {"font",{{"path","unused.ttf"}}},{"images",nlohmann::json::object()}};
-        for (const std::string id : {"old","new","mask"}) manifest["images"][id] = {{"design_size",{2,2}},{"variants",{
+        for (const std::string id : {"old","new","mask","walk"}) manifest["images"][id] = {{"design_size",{2,2}},{"variants",{
             {"4",{{"path",id+"4.png"},{"pixels",{8,8}}}}, {"8",{{"path",id+"8.png"},{"pixels",{16,16}}}}}}};
         std::ofstream(temp.path/"manifest.json") << manifest.dump();
         Content content(temp.path);
@@ -219,6 +223,32 @@ int main() {
         renderer.begin(window_width,window_height,view,{0,0,0,1});
         renderer.stage(content,previous,current,.5f,124,AssetTier::x4,"mask");
         renderer.rectangle(rectangle({1,1,1,1}));near(read(view,100,100),{255,255,255,255},0);
+        Layer panorama=image("walk");panorama.width=3200;panorama.height=600;panorama.part=StagePart::background;
+        Walking walking(60,-2);walking.update(.3);
+        const auto wrapped=walking.layers({panorama});
+        Layer cut_image=image("walk");cut_image.width=800;cut_image.height=600;
+        Cutin cut(cut_image,-1);cut.update(.01);
+        for (const auto tier : {AssetTier::x4,AssetTier::x8}) {
+            view={0,0,1200,900};renderer.begin(window_width,window_height,view,{0,0,0,1});
+            renderer.stage(content,{},wrapped,1,130,tier);
+            near(read(view,100,300),{255,0,0,255},0);near(read(view,700,300),{255,0,0,255},0);
+            renderer.image(content,cut.layer(),tier);
+            near(read(view,790,300),{255,0,0,255},0); // Entering image is still outside this point.
+            Cutin held(cut_image,-1);held.update(2);
+            renderer.image(content,held.layer(),tier);near(read(view,700,300),{0,255,0,255},0);
+            auto frame=rectangle({0,0,1,1});frame.part=StagePart::frame;frame.x=400;frame.width=400;
+            renderer.begin(window_width,window_height,view,{0,0,0,1});
+            renderer.stage(content,{}, {held.layer(),frame},1,131,tier);
+            near(read(view,100,300),{255,0,0,255},0);near(read(view,700,300),{0,0,255,255},0);
+            frame.color[3]=.5f;
+            renderer.begin(window_width,window_height,view,{0,0,0,1});
+            renderer.stage(content,{}, {held.layer(),frame},1,132,tier);
+            near(read(view,700,300),{0,127,128,255});
+            held.fade_out();held.update(.01);
+            renderer.begin(window_width,window_height,view,{0,0,1,1});
+            renderer.image(content,held.layer(),tier);
+            near(read(view,799,300),{0,0,255,255},0); // Exit uncovers the unchanged stage.
+        }
         require(glGetError()==GL_NO_ERROR,"Compositor cleanup left a GL error");
         std::cout << "Composite tests PASS: whole-scene alpha lerp, opaque output, image Y orientation, bars, snapshot keys, resize, live current scene, cache invalidation, GL state/exception restoration and budget limits\n";
         return 0;

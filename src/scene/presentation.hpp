@@ -3,6 +3,8 @@
 #include "scene/scene.hpp"
 #include "scene/snow.hpp"
 #include "scene/shake.hpp"
+#include "scene/cutin.hpp"
+#include "scene/walking.hpp"
 #include "script/script.hpp"
 #include <optional>
 
@@ -16,12 +18,12 @@ public:
     void update(double seconds);
     [[nodiscard]] bool busy() const;
     [[nodiscard]] const std::vector<Layer>& previous() const { return previous_; }
-    [[nodiscard]] const std::vector<Layer>& current() const { return current_; }
+    [[nodiscard]] std::vector<Layer> current() const;
     [[nodiscard]] float progress() const;
     [[nodiscard]] std::uint64_t revision() const { return revision_; }
     [[nodiscard]] int panel_mode() const { return panel_; }
     [[nodiscard]] bool panel_visible() const { return panel_ != 0; }
-    [[nodiscard]] std::vector<Layer> effects() const { return snow_ ? snow_->layers() : std::vector<Layer>{}; }
+    [[nodiscard]] std::vector<Layer> effects() const { if (cutin_) return {cutin_->layer()}; return snow_ ? snow_->layers() : std::vector<Layer>{}; }
     bool shaking() const { return shake_ && !shake_->finished(); }
     ShakeFrame shake_frame() const { return shake_ ? shake_->frame() : ShakeFrame{}; }
     std::uint64_t shake_serial() const { return shake_serial_; }
@@ -29,6 +31,7 @@ public:
     AudioMixer& mixer() { return mixer_; }
     void realtime_audio(bool enabled) { realtime_ = enabled; }
 private:
+    void stop_walking();
     Layer image(const std::string& name, bool r18) const;
     void voice(const std::string& name, bool r18);
     void play(AudioChannel channel, const std::string& kind, const std::string& name,
@@ -39,6 +42,8 @@ private:
     std::array<bool,4> playing_loops_{};
     bool realtime_{};
     std::optional<Snow> snow_;
+    std::optional<Walking> walking_;
+    std::optional<Cutin> cutin_;
     std::optional<Shake> shake_;
     std::uint64_t shake_serial_{};
     std::vector<Layer> previous_, current_;

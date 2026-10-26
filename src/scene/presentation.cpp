@@ -23,6 +23,14 @@ int optional(const std::vector<std::string>& args, std::size_t index, int fallba
 }
 double fade(int speed, float gain = 1) { return speed <= 0 ? 0 : 2.0 * gain / speed; }
 }
+std::vector<Layer> Presentation::current() const {
+    auto result=walking_ ? walking_->layers(current_) : current_;
+    const auto overlay=effects();
+    const auto frame=std::find_if(result.begin(),result.end(),[](const Layer& layer) { return layer.part==StagePart::frame; });
+    result.insert(frame,overlay.begin(),overlay.end());
+    return result;
+}
+void Presentation::stop_walking() { if (walking_) { current_=walking_->layers(current_); walking_.reset(); } }
 Layer Presentation::image(const std::string& name, bool r18) const {
     const auto& resource = content_.resource("image", name, r18);
     const auto& asset = content_.asset(resource.id);
@@ -58,6 +66,8 @@ void Presentation::update(double seconds) {
     mixer_.collect_finished();
     if (shake_) { shake_->update(seconds); if (shake_->finished()) shake_.reset(); }
     if (fading_) { elapsed_ += seconds; if (progress() >= 1) { fading_ = false; previous_.clear(); } }
+    if (walking_) walking_->update(seconds);
+    if (cutin_) { cutin_->update(seconds); if (cutin_->finished()) cutin_.reset(); }
     if (snow_) { snow_->update(seconds); if (snow_->finished()) snow_.reset(); }
     if (!scroll_) return;
     auto& scroll = *scroll_;
@@ -115,7 +125,7 @@ bool Presentation::command(const Instruction& instruction) {
         std::optional<std::size_t> background;
         if (args[cursor] != "*") {
             auto layer = image(args[cursor],r18);
-            layer.screen=screens_[1]; layer.overlay=overlays_[1]; layer.hsv=hsv_[0];
+            layer.part=StagePart::background; layer.screen=screens_[1]; layer.overlay=overlays_[1]; layer.hsv=hsv_[0];
             layer.x = -std::clamp(static_cast<float>(number(args[cursor+1])),0.0f,std::max(0.0f,layer.width-800));
             layer.y = -std::clamp(static_cast<float>(number(args[cursor+2])),0.0f,std::max(0.0f,layer.height-600));
             background = next.size(); next.push_back(std::move(layer));
@@ -124,17 +134,17 @@ bool Presentation::command(const Instruction& instruction) {
             const int center = number(args[cursor+1]); // annotated placement flags deliberately rejected
             if (args[cursor] == "*") continue;
             auto layer = image(args[cursor],r18);
-            layer.screen=screens_[2]; layer.overlay=overlays_[2]; layer.hsv=hsv_[1];
+            layer.part=StagePart::foreground; layer.screen=screens_[2]; layer.overlay=overlays_[2]; layer.hsv=hsv_[1];
             layer.x = static_cast<float>(center)-layer.width/2; layer.y = 600-layer.height;
             next.push_back(std::move(layer));
         }
         if (args[0] != "*") {
             auto layer = image(args[0],r18);
-            layer.screen=screens_[0]; layer.overlay=overlays_[0];
+            layer.part=StagePart::frame; layer.screen=screens_[0]; layer.overlay=overlays_[0];
             layer.x = static_cast<float>(frame_x); layer.y = static_cast<float>(frame_y);
             next.push_back(std::move(layer));
         }
-        previous_ = std::move(current_); current_ = std::move(next); background_ = background;
+        previous_ = current(); current_ = std::move(next); background_ = background;
         scroll_.reset(); wait_scroll_ = false;
         active_type_=transition_type_; active_speed_=speed_; active_mask_=transition_mask_;
         ++revision_; elapsed_ = 0; fading_ = active_speed_ <= 255;
@@ -167,12 +177,24 @@ bool Presentation::command(const Instruction& instruction) {
         if (mode < 0 || mode > 5) throw std::runtime_error("Unsupported panel mode");
         panel_ = mode; // Imported MessageUI owns panel geometry and transition timing.
     } else if (cmd == ".effect") {
-        count(instruction,1,1);
-        if (args[0] == "*") snow_.reset();
-        else if (args[0] == "fadeout") { if (snow_) snow_->fade_out(); }
-        else if (args[0] == "Snow" || args[0] == "SnowH") {
+        count(instruction,1,5);
+        if (args[0] == "*" || args[0] == "end") { count(instruction,1,1); stop_walking(); snow_.reset(); cutin_.reset(); }
+        else if (args[0] == "fadeout") { count(instruction,1,1); if (walking_) throw std::runtime_error("Walking fadeout behavior is not implemented; use effect end"); if (snow_) snow_->fade_out(); if (cutin_) cutin_->fade_out(); }
+        else if (args[0] == "Cutin") {
+            count(instruction,3,4);
+            Cutin next(image(args[1],r18),number(args[2]),args.size()>3 ? number(args[3]) : -1);
+            stop_walking(); cutin_=std::move(next); snow_.reset();
+        } else if (args[0] == "WScroll2") {
+            count(instruction,4,4);
+            if (args[1]!="*") throw std::runtime_error("WScroll2 object-list variants are not implemented");
+            Walking next(number(args[2]),number(args[3]));
+            (void)next.layers(current_); // Validate without replacing an existing effect.
+            if (!walking_) walking_=std::move(next);
+            snow_.reset(); cutin_.reset();
+        } else if (args[0] == "Snow" || args[0] == "SnowH") {
+            count(instruction,1,1);
             std::array<Layer,3> sprites{image("snowS.png",r18),image("snowM.png",r18),image("snowL.png",r18)};
-            snow_.emplace(std::move(sprites),args[0] == "SnowH");
+            stop_walking(); snow_.emplace(std::move(sprites),args[0] == "SnowH"); cutin_.reset();
         } else return false;
     } else if (cmd == ".playVoice") {
         count(instruction,1,1); voice(args[0],r18);

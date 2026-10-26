@@ -62,7 +62,8 @@ private:
     std::size_t cache_bytes_{},strip_bytes_{};
     static constexpr std::size_t strip_budget_=4ULL*1024*1024;
     std::uint64_t clock_{};
-    static constexpr std::size_t budget_ = 256ULL * 1024 * 1024;
+    // Keep both 4x walking panoramas and an 8x frame resident together.
+    static constexpr std::size_t budget_ = 512ULL * 1024 * 1024;
     GLuint program_{}, vao_{}, vbo_{};
     GLint rect_uniform_{}, color_uniform_{}, flip_uniform_{}, uv_uniform_{};
     GLint screen_uniform_{},screen_map_uniform_{};

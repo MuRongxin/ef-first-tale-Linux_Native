@@ -8,10 +8,12 @@
 #include <vector>
 namespace ef {
 using Color = std::array<float, 4>;
+enum class StagePart { none, background, foreground, frame };
 enum class LayerKind { image, rectangle, text };
 struct TextMarker { std::string asset; int frame_size{},frame{}; };
 struct Layer {
     LayerKind kind{};
+    StagePart part{StagePart::none};
     std::string asset, text, slot;
     std::string screen, overlay; // RGB strip applied in source-image coordinates before composition
     std::array<int,3> hsv{};

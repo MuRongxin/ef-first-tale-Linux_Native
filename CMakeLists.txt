@@ -21,6 +21,8 @@ add_library(ef_core
     src/scene/message_ui.cpp
     src/text/appearance.cpp
     src/text/layout.cpp
+    src/scene/walking.cpp
+    src/scene/cutin.cpp
     src/scene/shake.cpp
     src/scene/snow.cpp
     src/script/script.cpp
@@ -81,6 +83,10 @@ if(EF_BUILD_APP)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(ef_effect_motion_tests tests/effect_motion_tests.cpp)
+    target_link_libraries(ef_effect_motion_tests PRIVATE ef_core)
+    ef_compile_options(ef_effect_motion_tests)
+    add_test(NAME effect_motion COMMAND ef_effect_motion_tests)
     add_executable(ef_shake_tests tests/shake_tests.cpp)
     target_link_libraries(ef_shake_tests PRIVATE ef_core)
     ef_compile_options(ef_shake_tests)

@@ -26,6 +26,9 @@ int main() {
         require(lines[2].args[3] == "旁白  保留空格\\n下一行", "message spacing");
         require(lines[3].args[2] == "#名字" && lines[3].line == 4, "name marker and physical line");
         require(lines[4].command == "..wait" && lines[5].command == "<unparsed>", "unknown lines preserved");
+        const auto notes=parse_script("[j]；(表情注意）\n[e]；☆（演出备注）\n；本地备注\n.message 7   ；正文保留\n[j]未知正文\n.unknown 1\n", "notes");
+        require(notes.size()==3 && notes[0].line==4 && notes[0].args[3]=="；正文保留","Production notes must preserve physical lines and message text");
+        require(notes[1].command=="<unparsed>" && notes[2].command==".unknown","Note compatibility must not swallow other unknown input");
         require(message_display_text("乗n\\n中文\\w\\a\\v") == "乗n\n中文", "display escapes after Unicode conversion");
         rejects([] { (void)parse_script(".message 5 only", "bad"); });
         rejects([] { (void)parse_script(".message 65536   text", "bad"); });
