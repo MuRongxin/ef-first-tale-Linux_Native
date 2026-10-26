@@ -4,6 +4,7 @@
 #include <cmath>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 namespace {
 void require(bool ok,const char* message) { if (!ok) throw std::runtime_error(message); }
@@ -33,6 +34,21 @@ int main() {
             require(f.x==g.x && f.y==g.y,"Numeric mode must follow native default");
             require(o.frame().angle>=-30 && o.frame().angle<30,"Rotation bounds");
         }
+        // The native sign selects a different state only for the default/random mode.
+        // Explicit H/V/Z/O use the same blocking branch and the absolute countdown.
+        for (const std::string mode : {"H","V","Z","O"}) {
+            Shake forward(mode,30,100),negative(mode,30,-100);
+            for (const double dt : {0.,.029,.001,.2,.769}) {
+                forward.update(dt);negative.update(dt);
+                const auto a=forward.frame(),b=negative.frame();
+                require(a.kind==b.kind && a.x==b.x && a.y==b.y && a.crop==b.crop && a.angle==b.angle && a.sample==b.sample,
+                    "Explicit negative-duration shake differs from its positive counterpart");
+                require(!negative.finished(),"Negative duration finished before absolute countdown");
+            }
+            negative.update(.001);require(negative.finished(),"Negative duration did not end at absolute countdown");
+        }
+        rejects([] { Shake bad("H",1,std::numeric_limits<int>::min()); });
+        rejects([] { Shake bad("O",1,-1000001); });
         Shake zero("R",0,0); require(zero.finished(),"Zero duration should complete");
         Shake large("R",1,10); large.update(86400); require(large.finished(),"Large delta did not finish");
         rejects([] { Shake bad("T",1,10); }); rejects([] { Shake bad("R",1,-1); });
@@ -42,10 +58,10 @@ int main() {
         std::ofstream(temp.path/"manifest.json") << nlohmann::json{{"version",1},{"design_size",{800,600}},
             {"entry_scene","unused.json"},{"font",{{"path","unused.ttf"}}},{"development",true},{"images",nlohmann::json::object()}};
         Content content(temp.path); Presentation presentation(content);
-        for (const int repeats : {3,6}) {
+        for (const int repeats : {3,6}) for (const bool negative : {false,true}) {
             auto program=std::make_shared<Program>(); program->id="scr/test.sc";
             std::string script;
-            for (int n=0;n<repeats;++n) script+=".shakeScreen R 100 100\n";
+            for (int n=0;n<repeats;++n) script+=negative ? ".shakeScreen H 100 -100\n" : ".shakeScreen R 100 100\n";
             script+=".wait 5\n.message 1   done\n.end\n";
             program->instructions=parse_script(script,program->id);
             ScriptRuntime runtime([&](const std::string&) { return program; },[](const std::string&,const std::string& s) { return s; },program->id);

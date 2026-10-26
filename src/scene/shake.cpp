@@ -7,13 +7,17 @@ namespace ef {
 Shake::Shake(const std::string& mode,int amplitude,int duration,std::uint32_t seed)
     : mode_(mode.empty() ? 'R' : static_cast<char>(std::toupper(static_cast<unsigned char>(mode.front())))),
       amplitude_(amplitude),duration_(duration),seed_(seed) {
-    if (amplitude<0 || amplitude>10000 || duration<0 || duration>1000000)
+    const auto ticks=duration<0 ? -static_cast<std::int64_t>(duration) : static_cast<std::int64_t>(duration);
+    if (amplitude<0 || amplitude>10000 || ticks>1000000)
         throw std::runtime_error("Unsupported shake amplitude or duration");
+    duration_=static_cast<int>(ticks);
     if (mode_=='T') throw std::runtime_error("T shake mode has not been reconstructed");
     if (mode_!='Z' && mode_!='O' && mode_!='H' && mode_!='V') mode_='R'; // Native default also accepts a numeric token.
+    if (mode_=='R' && duration<0)
+        throw std::runtime_error("Asynchronous random shake has not been reconstructed");
     if (mode_=='Z' && amplitude>=300) throw std::runtime_error("Zoom shake crop must leave a positive image region");
     if (mode_=='O' && amplitude>90) throw std::runtime_error("Rotation shake beyond 90 degrees is not supported");
-    finished_=duration==0;
+    finished_=duration_==0;
 }
 std::uint32_t Shake::random_at(std::uint64_t n) const {
     // CRT-compatible LCG with logarithmic jump-ahead; the initial seed is a port choice.
