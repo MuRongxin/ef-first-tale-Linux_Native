@@ -58,9 +58,11 @@ void Presentation::voice(const std::string& name, bool r18) { play(AudioChannel:
 void Presentation::message(const Message& value) { voice(value.voice, value.script.starts_with("r18_scr/")); }
 float Presentation::progress() const {
     if (!fading_) return 1;
+    // Native transition state is an integer counter for every type:
+    // step=(elapsed_10ms_ticks*speed)/10 (dispatcher 0x53adc0; type0/type1 update
+    // functions consume DAT_005df330 as an int as well).
     const double ticks=std::floor(elapsed_*100+1e-9);
-    double step=ticks*active_speed_/10;
-    if (active_type_>=2) step=std::floor(step);
+    const double step=std::floor(ticks*active_speed_/10);
     return static_cast<float>(std::min(1.0,step/transition_completion(active_type_)));
 }
 bool Presentation::busy() const { return shaking() || fading_ || (wait_scroll_ && scroll_.has_value()); }
@@ -107,6 +109,9 @@ bool Presentation::command(const Instruction& instruction) {
     } else if (cmd == ".transition") {
         count(instruction,3,3);
         const int type=number(args[0]),speed=number(args[2]);
+        // type2's ghost replay samples once per transitionDrawInterval (5 ticks); the counter
+        // then advances speed/2 per sample, which the renderer models exactly only for the
+        // single scripted speed=20. Keep the corpus-driven restriction until other speeds appear.
         if (speed<=0 || !supported_transition(type) || (type!=1 && args[1]!="*") || (type==1 && (args[1]=="*" || speed>255)) || (type==2 && speed!=20))
             throw std::runtime_error("Unsupported transition type, mask or speed");
         std::string mask;

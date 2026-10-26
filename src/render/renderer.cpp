@@ -398,7 +398,9 @@ void Renderer::stage(const Content& content, const std::vector<Layer>& previous,
     if (effect!=2 || rebuild || !transition_history_valid_) render(current_target_,current);
     const int step=static_cast<int>(std::floor(std::max(0.0f,progress)*static_cast<float>(transition_completion(effect))+.0001f));
     if (effect==2) {
-        const int sample=step/10; // Corpus speed20, native transition interval5 ticks.
+        // Native updates are gated by gfx.transitionDrawInterval (default 5 ticks, 0x53adc0);
+        // with the only corpus speed=20 the counter advances speed/2 per update -> 10 per sample.
+        const int sample=step/10;
         if (rebuild || !transition_history_valid_ || sample<transition_sample_) {
             transition_history_valid_=false;
             transition_history_.resize(width,height);transition_next_.resize(width,height);
