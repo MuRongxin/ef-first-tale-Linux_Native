@@ -16,6 +16,8 @@ public:
     bool command(const Instruction& instruction);
     void message(const Message& message);
     void update(double seconds);
+    void local_assignment(const std::string& name, std::int64_t value);
+    [[nodiscard]] std::int64_t finder_counter() const;
     [[nodiscard]] bool busy() const;
     [[nodiscard]] const std::vector<Layer>& previous() const { return previous_; }
     [[nodiscard]] std::vector<Layer> current() const;
@@ -33,6 +35,7 @@ public:
     void realtime_audio(bool enabled) { realtime_ = enabled; }
 private:
     void stop_walking();
+    std::vector<Layer> frame_layers() const;
     Layer image(const std::string& name, bool r18) const;
     void voice(const std::string& name, bool r18);
     void play(AudioChannel channel, const std::string& kind, const std::string& name,
@@ -47,7 +50,11 @@ private:
     std::optional<Cutin> cutin_;
     std::optional<Shake> shake_;
     std::uint64_t shake_serial_{};
-    std::vector<Layer> previous_, current_;
+    std::vector<Layer> previous_, current_, transition_frame_;
+    std::optional<Layer> pending_frame_, frame_;
+    std::array<Layer,4> finder_batteries_;
+    bool pending_finder_{}, finder_{};
+    double finder_ticks_{}; // Native global 10ms clock, including time with the finder hidden.
     std::uint64_t revision_{};
     int speed_{9999}, panel_{3},active_speed_{9999},transition_type_{},active_type_{};
     std::string transition_mask_,active_mask_;

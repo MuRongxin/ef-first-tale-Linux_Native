@@ -279,7 +279,8 @@ int run(const Options& options) {
         renderer.begin(width, height, view, scene.background);
         if (script && !options.text_preview) {
             const auto& stage = script->presentation();
-            renderer.stage(content, stage.previous(), stage.current(), stage.progress(), stage.revision(), tier, stage.transition_mask(),stage.transition_type());
+            renderer.stage(content, stage.previous(), stage.current(), stage.progress(), stage.revision(), tier, stage.transition_mask(),stage.transition_type(),
+                [&](const Layer& layer) { font->draw(renderer,layer,view.scale()); });
         }
         for (const auto& layer : rendered_scene.layers) {
             switch (layer.kind) {

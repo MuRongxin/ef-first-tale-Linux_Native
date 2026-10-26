@@ -1,5 +1,6 @@
 #include "render/renderer.hpp"
 #include "scene/cutin.hpp"
+#include "scene/presentation.hpp"
 #include "scene/walking.hpp"
 #include <SDL3/SDL.h>
 #include <png.h>
@@ -105,6 +106,20 @@ int main() {
             {"font",{{"path","unused.ttf"}}},{"images",nlohmann::json::object()}};
         for (const std::string id : {"old","new","mask","walk"}) manifest["images"][id] = {{"design_size",{2,2}},{"variants",{
             {"4",{{"path",id+"4.png"},{"pixels",{8,8}}}}, {"8",{{"path",id+"8.png"},{"pixels",{16,16}}}}}}};
+        // Native finder battery is an RGBA replacement inside an already translucent bitmap.
+        manifest["development"]=true;manifest["resources"]="catalog.json";
+        nlohmann::json catalog{{"version",1},{"entries",nlohmann::json::object()}};
+        for (const std::string name : {"finder.png","batFull.png","batMid.png","batLow.png","batZero.png"}) {
+            const bool frame=name=="finder.png";const int w=frame ? 800 : 59,h=frame ? 600 : 35;
+            const Pixel color=frame ? Pixel{255,0,0,128} : Pixel{0,255,0,128};
+            std::vector<Pixel> pixels(static_cast<std::size_t>(w*h),color);
+            png_image bitmap{};bitmap.version=PNG_IMAGE_VERSION;bitmap.width=static_cast<unsigned>(w);bitmap.height=static_cast<unsigned>(h);bitmap.format=PNG_FORMAT_RGBA;
+            require(png_image_write_to_file(&bitmap,(temp.path/name).c_str(),0,pixels.data(),0,nullptr),"Could not generate finder fixture");
+            const std::string id=(frame ? "bg/" : "sys/")+name;
+            manifest["images"][id]={{"source_sha256",std::string(64,'a')},{"design_size",{w,h}},{"variants",{{"1",{{"path",name},{"pixels",{w,h}}}}}}};
+            catalog["entries"][id]={{"kind","image"},{"name",name},{"tag",frame ? "bg" : "sys"},{"source_sha256",std::string(64,'a')}};
+        }
+        std::ofstream(temp.path/"catalog.json")<<catalog.dump();
         std::ofstream(temp.path/"manifest.json") << manifest.dump();
         Content content(temp.path);
         Window window;
@@ -248,6 +263,24 @@ int main() {
             renderer.begin(window_width,window_height,view,{0,0,1,1});
             renderer.image(content,held.layer(),tier);
             near(read(view,799,300),{0,0,255,255},0); // Exit uncovers the unchanged stage.
+        }
+        Presentation finder(content);
+        finder.command(parse_script(".frame finder.png\n","scr/test.sc").front());
+        finder.command(parse_script(".stage * * 0 0\n","scr/test.sc").front());
+        for (const auto tier : {AssetTier::x4,AssetTier::x8}) for (const Viewport area : {Viewport{0,0,800,600},Viewport{0,0,1200,900}}) {
+            finder.local_assignment("finderCounter",32401);
+            renderer.begin(window_width,window_height,area,{0,0,0,1});
+            renderer.stage(content,{},finder.current(),1,160,tier,{},0,[](const Layer&) {});
+            // Inside battery: green once, no red left from the original full icon.
+            for (const int x : {28,50,86}) for (const int y : {12,30,46}) near(read(area,x,y),{0,128,0,255},0);
+            // Adjacent pixels: the original finder remains intact, without gaps or overlaps.
+            for (const auto point : std::array<std::array<int,2>,4>{{{27,30},{87,30},{50,11},{50,48}}}) {
+                const auto actual=read(area,point[0],point[1]);
+                if (actual!=Pixel{128,0,0,255}) throw std::runtime_error("Finder edge at "+std::to_string(point[0])+","+std::to_string(point[1])+" viewport "+std::to_string(area.width)+" got "+std::to_string(actual[0])+","+std::to_string(actual[1])+","+std::to_string(actual[2]));
+            }
+            // A 1.5x viewport can put a physical sample exactly on the shared horizontal edge.
+            const auto seam=read(area,50,47);
+            require(seam==Pixel{128,0,0,255} || seam==Pixel{0,128,0,255},"Finder edge has a hole or double alpha blend");
         }
         require(glGetError()==GL_NO_ERROR,"Compositor cleanup left a GL error");
         std::cout << "Composite tests PASS: whole-scene alpha lerp, opaque output, image Y orientation, bars, snapshot keys, resize, live current scene, cache invalidation, GL state/exception restoration and budget limits\n";

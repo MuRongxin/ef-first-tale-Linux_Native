@@ -52,6 +52,7 @@ struct ScriptHost {
     std::function<void(double)> tick;
     std::function<bool()> busy;
     std::function<bool()> voice_playing{};
+    std::function<void(const std::string&, std::int64_t)> local_assignment{};
 };
 class ScriptRuntime {
 public:
@@ -73,6 +74,8 @@ public:
     [[nodiscard]] const std::vector<Choice>& choices() const { return choices_; }
     [[nodiscard]] const std::vector<std::string>& diagnostics() const { return diagnostics_; }
     [[nodiscard]] std::int64_t variable(const std::string& name) const;
+    // Host clocks may update an existing local without recursively notifying assignments.
+    void update_local_variable(const std::string& name, std::int64_t value);
 private:
     void execute(const Instruction& instruction);
     void jump(const std::string& label);

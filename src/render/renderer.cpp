@@ -339,7 +339,7 @@ void Renderer::clear_cache() {
     snapshot_valid_ = false;
     previous_target_.reset(); current_target_.reset();
 }
-void Renderer::opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier) {
+void Renderer::opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier, const std::function<void(const Layer&)>& text) {
     glDisable(GL_BLEND);
     quad(white_,0,0,800,600,{0,0,0,1});
     glEnable(GL_BLEND);
@@ -349,13 +349,15 @@ void Renderer::opaque_scene(const Content& content, const std::vector<Layer>& la
         switch (layer.kind) {
         case LayerKind::image: image(content,layer,tier); break;
         case LayerKind::rectangle: rectangle(layer); break;
-        case LayerKind::text: break;
+        case LayerKind::text:
+            if (!text) throw std::runtime_error("Stage text requires a vector text painter");
+            text(layer); break;
         default: throw std::runtime_error("Unknown stage layer kind");
         }
     }
 }
 void Renderer::stage(const Content& content, const std::vector<Layer>& previous, const std::vector<Layer>& current,
-                     float progress, std::uint64_t revision, AssetTier tier, const std::string& mask,int transition_type) {
+                     float progress, std::uint64_t revision, AssetTier tier, const std::string& mask,int transition_type, const std::function<void(const Layer&)>& text) {
     if (!std::isfinite(progress)) throw std::runtime_error("Stage progress must be finite");
     if (!supported_transition(transition_type) || (!mask.empty() && transition_type>1) || (transition_type==1 && mask.empty()))
         throw std::runtime_error("Invalid stage transition configuration");
@@ -370,7 +372,7 @@ void Renderer::stage(const Content& content, const std::vector<Layer>& previous,
     if (progress >= 1) {
         if (effect==2 && snapshot_valid_ && transition_history_valid_ && snapshot_revision_==revision && snapshot_tier_==tier && snapshot_view_==state.viewport) {
             glDisable(GL_BLEND);quad_id(current_target_.texture,0,0,800,600,{1,1,1,1},true);
-        } else opaque_scene(content,current,tier);
+        } else opaque_scene(content,current,tier,text);
         transition_history_valid_=false;transition_history_.reset();transition_next_.reset();
         snapshot_valid_ = false;
         checked_gl("Draw current stage");
@@ -387,7 +389,7 @@ void Renderer::stage(const Content& content, const std::vector<Layer>& previous,
         glBindFramebuffer(GL_FRAMEBUFFER,target.framebuffer);
         glViewport(0,0,width,height);
         glDisable(GL_SCISSOR_TEST);
-        opaque_scene(content,layers,tier);
+        opaque_scene(content,layers,tier,text);
         checked_gl("Compose stage scene");
     };
     if (rebuild) {

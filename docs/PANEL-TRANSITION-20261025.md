@@ -1,4 +1,4 @@
-# 消息面板切换（本地记录，不提交）
+# 消息面板切换
 
 目标：原版 ef_first_AA.exe，SHA-256 9824732313d13136cb2300f33038a655ba480ae01cefc2749028d1b1748b4f9e。
 使用 reverse-engineer-anything / REA / Ghidra 12.1.4，只读；复用 nvl-analysis.rea，新证据200–216。

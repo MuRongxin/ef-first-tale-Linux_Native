@@ -25,10 +25,12 @@ ScriptView::ScriptView(const Content& content, const Options& options)
         },
         [this](double seconds) {
             presentation_.update(seconds);
+            runtime_.update_local_variable("finderCounter",presentation_.finder_counter());
             if (message_ui_) message_ui_->update(seconds);
         },
         [this] { return presentation_.busy() || (message_ui_ && message_ui_->busy()); },
-        [this] { return presentation_.mixer().playing(AudioChannel::voice); }});
+        [this] { return presentation_.mixer().playing(AudioChannel::voice); },
+        [this](const std::string& name,std::int64_t value) { presentation_.local_assignment(name,value); }});
     const auto index=content.read_json(content.script_index());
     if (!options.text_preview && content.has_resource_catalog() && index.contains("message_ui"))
         message_ui_.emplace(content,index.at("message_ui").get<std::string>());

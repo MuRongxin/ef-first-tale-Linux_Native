@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <array>
 #include <map>
+#include <functional>
 #include <set>
 
 namespace ef {
@@ -35,16 +36,17 @@ public:
     void rectangle(const Layer& layer);
     void image(const Content& content, const Layer& layer, AssetTier tier);
     // Layers are composed on opaque black before the complete scenes are blended.
-    // Text layers are ignored here; callers render text after the stage.
+    // A text painter places vector HUD glyphs inside the same transition snapshots.
     void stage(const Content& content, const std::vector<Layer>& previous, const std::vector<Layer>& current,
-               float progress, std::uint64_t revision, AssetTier tier, const std::string& mask = {},int transition_type = 0);
+               float progress, std::uint64_t revision, AssetTier tier, const std::string& mask = {},int transition_type = 0,
+               const std::function<void(const Layer&)>& text = {});
     void shake(const ShakeFrame& frame,std::uint64_t serial);
     void clear_cache();
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:
     void cleanup();
     void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {}, GLuint overlay = 0, std::array<float,4> overlay_map = {}, std::array<int,3> hsv = {}, GLuint old = 0, GLuint mask = 0, float phase = 0,int transition_type = 0,std::array<int,4> region = {});
-    void opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier);
+    void opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier, const std::function<void(const Layer&)>& text);
     struct Target {
         GLuint framebuffer{}, texture{};
         int width{}, height{};

@@ -23,6 +23,11 @@ Pixels read(int width,int height) {
     glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,result.data());
     return result;
 }
+bool same_rgb(const Pixels& a,const Pixels& b) {
+    if (a.size()!=b.size()) return false;
+    for (std::size_t i=0;i<a.size();i+=4) for (std::size_t c=0;c<3;++c) if (a[i+c]!=b[i+c]) return false;
+    return true;
+}
 std::size_t color_count(const Pixels& pixels,int channel) {
     std::size_t count{};
     for (std::size_t i=0; i<pixels.size(); i+=4)
@@ -88,6 +93,28 @@ int main(int argc,char** argv) {
                 for (int y=0; y<height-2*scale; ++y)
                     require(std::equal(shifted.begin()+static_cast<std::ptrdiff_t>(y*stride),shifted.begin()+static_cast<std::ptrdiff_t>((y+1)*stride),
                         base.begin()+static_cast<std::ptrdiff_t>((y+2*scale)*stride)),"Baseline shift is not exact physical pixel translation");
+                // Vector HUD text must live inside the stage FBO, including the frozen old snapshot.
+                auto hud=layer;hud.appearance={};hud.text="856";hud.color={1,0,0,1};
+                auto direct=[&](const ef::Layer& item) {
+                    renderer.begin(width,height,ef::fit_viewport(width,height),{0,0,0,1});
+                    font.draw(renderer,item,static_cast<float>(scale));return read(width,height);
+                };
+                const auto red_hud=direct(hud);auto next_hud=hud;next_hud.text="857";next_hud.color={0,1,0,1};
+                const auto green_hud=direct(next_hud);
+                auto stage_text=[&](const ef::Layer& old,const ef::Layer& next,float progress) {
+                    renderer.begin(width,height,ef::fit_viewport(width,height),{0,0,0,1});
+                    renderer.stage(content,{old},{next},progress,9100+static_cast<unsigned>(scale),ef::AssetTier::x4,{},0,
+                        [&](const ef::Layer& item) {font.draw(renderer,item,static_cast<float>(scale));});
+                    require(glGetError()==GL_NO_ERROR,"Vector stage composition left a GL error");
+                    return read(width,height);
+                };
+                require(same_rgb(stage_text(hud,next_hud,0),red_hud),"Old vector HUD missing or displaced in transition FBO");
+                auto changed_old=hud;changed_old.text="999";
+                require(same_rgb(stage_text(changed_old,next_hud,0),red_hud),"Cached old HUD changed during transition");
+                const auto mixed=stage_text(hud,next_hud,.5f);
+                require(!same_rgb(mixed,red_hud) && !same_rgb(mixed,green_hud),"HUD text did not participate in the fade");
+                require(same_rgb(stage_text(hud,next_hud,1),green_hud),"Vector HUD completion differs from direct FreeType rendering");
+                renderer.clear_cache();
                 // The legacy non-kinsoku path uses the same effect passes and reset cache correctly.
                 layer.kinsoku=false; layer.appearance.outline_width=2;
                 require(color_count(render(layer).first,2)==0,"Default outline color should be black");

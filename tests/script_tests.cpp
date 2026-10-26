@@ -95,6 +95,17 @@ int main() {
         require(!locked.controls_enabled() && locked.message()->id==1,"disabled controls ignore clicks and wait for voice");
         speaking = false; locked.update(0);
         require(locked.controls_enabled() && locked.message()->id==2,"scripted controls resume automatically after voice ends");
+        programs["observer"]=program(".set finderCounter = 856\n.set finderCounter = 856\n.setGlobal other = 1\n.message 1   pause\n.end\n","observer");
+        ScriptRuntime observer(loader,resolver,"observer");int assignments=0;
+        observer.set_host({{}, {}, {}, {}, {}, [&](const std::string& name,std::int64_t value) {
+            require(name=="finderCounter" && value==856,"Unexpected local assignment notification");++assignments;
+        }});
+        observer.update(0);require(assignments==2,"Repeated same-value assignments must notify the host");
+        observer.update_local_variable("finderCounter",857);
+        observer.update_local_variable("missing",42);
+        observer.update_local_variable("other",42);
+        require(observer.variable("finderCounter")==857 && observer.variable("missing")==0 && observer.variable("other")==1 && assignments==2,
+            "Clock writeback must only update existing locals without recursive notification");
         programs["loop"] = program(".label loop\n.goto loop\n", "loop");
         ScriptRuntime loop(loader, resolver, "loop");
         rejects([&] { loop.update(0); });

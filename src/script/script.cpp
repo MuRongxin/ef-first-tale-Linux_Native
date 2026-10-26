@@ -263,6 +263,9 @@ ScriptRuntime::ScriptRuntime(Loader loader, Resolver resolver, std::string entry
         pc_ = static_cast<std::size_t>(it-program_->instructions.begin());
     }
 }
+void ScriptRuntime::update_local_variable(const std::string& name, std::int64_t value) {
+    if (auto it=variables_.find(name); it!=variables_.end()) it->second=value;
+}
 std::int64_t ScriptRuntime::variable(const std::string& name) const {
     if (const auto it = variables_.find(name); it != variables_.end()) return it->second;
     if (const auto it = globals_.find(name); it != globals_.end()) return it->second;
@@ -365,7 +368,10 @@ void ScriptRuntime::execute(const Instruction& instruction) {
             value += base;
         }
         if (cmd == ".setGlobal") { globals_[args[0]] = value; variables_.erase(args[0]); }
-        else variables_[args[0]] = value;
+        else {
+            if (host_.local_assignment) host_.local_assignment(args[0],value);
+            variables_[args[0]] = value;
+        }
     } else if (cmd == ".select") {
         choices_.clear();
         for (const auto& arg : args) {

@@ -6,7 +6,7 @@
 
 ## 1. 当前 HEAD 与工作区
 
-- 代码 HEAD：`ce35020 feat: 按原版优先级解析 bg/st 同名立绘`；docs/ 已随本文档提交一并入库；`AGENTS.md` 仍为本地协作说明不提交，`assets/`、`work/`、`analysis/`、`content/` 继续不入库。工作区另有用户未提交的 `.frame`/`.stage` WIP，勿混入本快照。
+- 资源优先级基线：`ce35020 feat: 按原版优先级解析 bg/st 同名立绘`；docs/ 已随本文档提交一并入库；`AGENTS.md` 仍为本地协作说明不提交，`assets/`、`work/`、`analysis/`、`content/` 继续不入库。`.frame` 语料范围现已实现，计时/电量/转场快照与测试记录见 [FRAME-AUDIT-20261026.md](FRAME-AUDIT-20261026.md)；下一步继续 `.stage` 逗号位置参数。
 - 近期提交（2026-10-25/26，尾部）：
   - `06ca3da` 接通基础场景演出与原版音频播放
   - `a6ebf06` 全屏文本续写与分组清页
@@ -19,7 +19,7 @@
   - `3004b44` speed>255 转场对所有类型立即完成
   - `ce35020` 按原版优先级解析 bg/st 同名立绘
 - 本机 `build/dev` 自动测试当前 **25/25 PASS**，core ASan **18/18 PASS**；最近实现记录文档：
-  `RUNTIME-STAGE-AUDIO-20261025.md`、`MESSAGE-UI-20261025.md`、`PANEL-TRANSITION-20261025.md`、`NVL-FLOW-20261025.md`、`AUDIO-CROSSFADE-20261026.md`、`SCREEN-20261026.md`、`SHAKE-OVERLAY-20261026.md`、`HSV-MASK-20261026.md`、`CUTIN-WALKING-20261026.md`、`SPECIAL-TRANSITION-20261026.md`（均为本地记录，不入库）。
+  `RUNTIME-STAGE-AUDIO-20261025.md`、`MESSAGE-UI-20261025.md`、`PANEL-TRANSITION-20261025.md`、`NVL-FLOW-20261025.md`、`AUDIO-CROSSFADE-20261026.md`、`SCREEN-20261026.md`、`SHAKE-OVERLAY-20261026.md`、`HSV-MASK-20261026.md`、`CUTIN-WALKING-20261026.md`、`SPECIAL-TRANSITION-20261026.md`（文档已纳入 docs/；原始证据与运行产物不入库）。
 
 ## 2. 里程碑状态
 
