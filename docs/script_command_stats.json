@@ -1,0 +1,471 @@
+{
+ ".message": {
+  "count": 17168,
+  "arities": {
+   "4": 17159,
+   "7": 2,
+   "5": 4,
+   "9": 2,
+   "29": 1
+  },
+  "files": 70,
+  "samples": [
+   ".message 100 yuk-000_01-0003 #优子 我想，任谁都曾向上天祈求。",
+   ".message 110 yuk-000_01-0005 #优子 哪怕心中并没有信仰，也总有那么一天会诚心诚意地献上祈祷。",
+   ".message 120 yuk-000_01-0007 #优子 它是每个人的目标。",
+   ".message 130 yuk-000_01-0009 #优子 它是每个人的渴望。",
+   ".message 140 yuk-000_01-0011 #优子 它是每个人都心驰神往，期盼得到的美好。",
+   ".message 150 yuk-000_01-0013 #优子 它源自错综复杂的感情，生于人与人之间的情谊。"
+  ]
+ },
+ ".transition": {
+  "count": 6380,
+  "arities": {
+   "3": 6380
+  },
+  "files": 70,
+  "samples": [
+   ".transition 0 * 10",
+   "[j].transition 0 * 15",
+   "[j].transition 0 * 20",
+   "[j].transition 0 * 15",
+   "[j].transition 0 * 15",
+   "[j].transition 0 * 10"
+  ]
+ },
+ ".stage": {
+  "count": 4918,
+  "arities": {
+   "4": 3522,
+   "6": 1105,
+   "8": 291
+  },
+  "files": 70,
+  "samples": [
+   ".stage * BLACK.png 0 0",
+   "[j].stage * BLACK.png 0 0",
+   "[j].stage * BLACK.png 0 0",
+   "[j].stage * BLACK.png 0 0",
+   "[j].stage * BLACK.png 0 0",
+   "[j].stage * BLACK.png 0 0"
+  ]
+ },
+ ".panel": {
+  "count": 566,
+  "arities": {
+   "1": 566
+  },
+  "files": 73,
+  "samples": [
+   ".panel 3",
+   ".panel 0",
+   ".panel 3",
+   ".panel 0",
+   ".panel 3",
+   ".panel 0"
+  ]
+ },
+ ".playBGM": {
+  "count": 427,
+  "arities": {
+   "1": 399,
+   "2": 1,
+   "3": 27
+  },
+  "files": 69,
+  "samples": [
+   ".playBGM efBGM016.ogg",
+   ".playBGM * 10",
+   ".playBGM efBGM025mix.ogg",
+   ".playBGM efBGM026mix.ogg",
+   ".playBGM *",
+   ".playBGM efBGM013.ogg 0 *"
+  ]
+ },
+ ".wait": {
+  "count": 370,
+  "arities": {
+   "1": 370
+  },
+  "files": 49,
+  "samples": [
+   "[j].wait 200",
+   "[e].wait 350",
+   "[j].wait 100",
+   "[j].wait 80",
+   "[j].wait 200",
+   "[j].wait 300"
+  ]
+ },
+ ".playSE": {
+  "count": 259,
+  "arities": {
+   "4": 180,
+   "2": 20,
+   "1": 58,
+   "3": 1
+  },
+  "files": 49,
+  "samples": [
+   ".playSE kyoukai_door.ogg f 0 *",
+   ".playSE kyoukai_door.ogg f 0 *",
+   ".playSE akikan.ogg f 0 *",
+   ".playSE bike_a2.ogg f 0 *",
+   ".playSE bike_b.ogg f 0 *",
+   ".playSE butsukaru.ogg f 0 *"
+  ]
+ },
+ ".screen": {
+  "count": 191,
+  "arities": {
+   "2": 152,
+   "3": 39
+  },
+  "files": 33,
+  "samples": [
+   ".screen sc_night01.png sc_night01.png",
+   ".screen * *",
+   ".screen sc_night01.png sc_night01.png",
+   ".screen * *",
+   "[e].screen sc_night03.png sc_night03.png",
+   "[j].screen sc_night01.png sc_night01.png"
+  ]
+ },
+ ".overlay": {
+  "count": 163,
+  "arities": {
+   "2": 124,
+   "3": 39
+  },
+  "files": 39,
+  "samples": [
+   "[e].overlay * or_miyako03d.png",
+   "[e].overlay * or_miyako03d.png",
+   "[j].overlay * or_miyako03a02.png",
+   ".overlay * *",
+   "[e].overlay * or_miyako03d.png",
+   "[e].overlay * or_miyako03d.png"
+  ]
+ },
+ ".effect": {
+  "count": 100,
+  "arities": {
+   "1": 54,
+   "3": 2,
+   "4": 44
+  },
+  "files": 25,
+  "samples": [
+   ".effect Snow",
+   "[j].effect fadeout",
+   "[e].effect fadeout",
+   ".effect *",
+   ".effect SnowH",
+   ".effect *"
+  ]
+ },
+ ".chain": {
+  "count": 94,
+  "arities": {
+   "1": 94
+  },
+  "files": 66,
+  "samples": [
+   ".chain 100_01.sc",
+   ".chain 101_01.sc",
+   ".chain 102_01.sc",
+   ".chain 102_02.sc",
+   ".chain 102_03.sc",
+   ".chain 102_04.sc"
+  ]
+ },
+ ".set": {
+  "count": 49,
+  "arities": {
+   "5": 5,
+   "3": 44
+  },
+  "files": 17,
+  "samples": [
+   ".set favMiyako_a = favMiyako_a + 1",
+   ".set favMiyako_d = favMiyako_d + 1",
+   ".set favMiyako = favMiyako + 1",
+   ".set favMiyako = favMiyako + 1",
+   ".set exitFromEvent = 1",
+   ".set prohibitAutoSave = 1"
+  ]
+ },
+ ".endScroll": {
+  "count": 48,
+  "arities": {
+   "1": 48
+  },
+  "files": 22,
+  "samples": [
+   ".endScroll f",
+   ".endScroll f",
+   ".endScroll f",
+   ".endScroll f",
+   ".endScroll f",
+   ".endScroll f"
+  ]
+ },
+ ".label": {
+  "count": 45,
+  "arities": {
+   "1": 45
+  },
+  "files": 16,
+  "samples": [
+   ".label ef_000_a1",
+   ".label ef_000_b1",
+   ".label ef_000_a2",
+   ".label ef_000_b2",
+   ".label ef_000_a3",
+   ".label ef_000_b3"
+  ]
+ },
+ ".vscroll": {
+  "count": 39,
+  "arities": {
+   "2": 39
+  },
+  "files": 13,
+  "samples": [
+   "[e].vscroll 1200 25",
+   "[j].vscroll 1200 10",
+   "[e].vscroll 0 -30",
+   "[j].vscroll 0 -10",
+   "[e].vscroll 0 -40",
+   "[j].vscroll 0 -7"
+  ]
+ },
+ ".end": {
+  "count": 38,
+  "arities": {
+   "0": 38
+  },
+  "files": 23,
+  "samples": [
+   "[j].end",
+   "[j].end",
+   "[j].end",
+   ".end",
+   ".end",
+   ".end"
+  ]
+ },
+ ".scroll": {
+  "count": 32,
+  "arities": {
+   "3": 32
+  },
+  "files": 7,
+  "samples": [
+   "[e].scroll 581 837 30",
+   "[j].scroll 581 837 6",
+   "[e].scroll 400 1046 15",
+   "[j].scroll 400 1046 6",
+   ".scroll 200 400 10",
+   "[e].scroll 100 100 15"
+  ]
+ },
+ ".pragma": {
+  "count": 29,
+  "arities": {
+   "1": 29
+  },
+  "files": 9,
+  "samples": [
+   "[j].pragma disable_control",
+   ".pragma enable_control",
+   "[j].pragma disable_control",
+   ".pragma enable_control",
+   "[j].pragma disable_control",
+   ".pragma enable_control"
+  ]
+ },
+ ".frame": {
+  "count": 28,
+  "arities": {
+   "1": 28
+  },
+  "files": 6,
+  "samples": [
+   ".frame finder.png",
+   ".frame *",
+   ".frame finder.png",
+   ".frame *",
+   ".frame finder.png",
+   ".frame *"
+  ]
+ },
+ ".if": {
+  "count": 26,
+  "arities": {
+   "4": 26
+  },
+  "files": 11,
+  "samples": [
+   "[j].if ef_000 == 1 ef_000_b1",
+   "[j].if ef_000 <= 0 ef_000_a1",
+   "[j].if ef_000 == 1 ef_000_b2",
+   "[j].if ef_000 <= 0 ef_000_a2",
+   "[j].if ef_000 == 1 ef_000_b3",
+   "[j].if ef_000 <= 0 ef_000_a3"
+  ]
+ },
+ ".setGlobal": {
+  "count": 21,
+  "arities": {
+   "3": 21
+  },
+  "files": 16,
+  "samples": [
+   "[j].setGlobal EYE_SEQ_DEFAULT = 2",
+   ".setGlobal ef_000 = 1",
+   "[j].setGlobal EYE_SEQ_DEFAULT = 2",
+   "[e].setGlobal BADEND1 = 1",
+   "[e].setGlobal BADEND2 = 1",
+   "[e].setGlobal BADEND3 = 1"
+  ]
+ },
+ ".hscroll": {
+  "count": 20,
+  "arities": {
+   "2": 20
+  },
+  "files": 7,
+  "samples": [
+   "[e].hscroll 0 -25",
+   "[j].hscroll 0 -10",
+   "[e].hscroll 660 40",
+   "[j].hscroll 660 10",
+   ".hscroll 600 100",
+   ".hscroll 200 -100"
+  ]
+ },
+ ".HSVfilter": {
+  "count": 19,
+  "arities": {
+   "6": 19
+  },
+  "files": 8,
+  "samples": [
+   "[j].HSVfilter 0 0 0 0 0 0",
+   "[j].HSVfilter 0 0 0 0 0 0",
+   ".HSVfilter 0 0 0 5 -5 0",
+   ".HSVfilter 0 0 0 0 0 0",
+   ".HSVfilter 0 0 0 0 5 -5",
+   ".HSVfilter 0 0 0 0 0 0"
+  ]
+ },
+ ".shakeScreen": {
+  "count": 17,
+  "arities": {
+   "3": 17
+  },
+  "files": 8,
+  "samples": [
+   ".shakeScreen R 100 100",
+   ".shakeScreen R 100 100",
+   ".shakeScreen R 100 100",
+   ".shakeScreen R 100 100",
+   ".shakeScreen R 20 20",
+   ".shakeScreen O 30 200"
+  ]
+ },
+ ".playSE2": {
+  "count": 13,
+  "arities": {
+   "4": 3,
+   "1": 7,
+   "2": 3
+  },
+  "files": 7,
+  "samples": [
+   ".playSE2 yuka.ogg f 0 *",
+   ".playSE2 *",
+   ".playSE2 hiro_keitai_male.ogg f 0 *",
+   ".playSE2 hiro_keitai_male.ogg f 0 *",
+   ".playSE2 otowa_kaze_first.ogg true",
+   ".playSE2 *"
+  ]
+ },
+ ".playVoice": {
+  "count": 12,
+  "arities": {
+   "1": 11,
+   "3": 1
+  },
+  "files": 10,
+  "samples": [
+   "[j].playVoice *",
+   ".playVoice *",
+   ".playVoice *",
+   ".playVoice *",
+   ".playVoice *",
+   ".playVoice *"
+  ]
+ },
+ ".goto": {
+  "count": 10,
+  "arities": {
+   "1": 10
+  },
+  "files": 5,
+  "samples": [
+   "[j].goto ef_000_b1",
+   "[j].goto ef_000_b2",
+   "[j].goto ef_000_b3",
+   ".goto miyako_c",
+   ".goto miyako_c",
+   ".goto miyako_f"
+  ]
+ },
+ "#include": {
+  "count": 10,
+  "arities": {
+   "0": 10
+  },
+  "files": 8,
+  "samples": [
+   "#include 111_05_ero.sc",
+   "#include 111_05_ero.sc",
+   "#include 215_02_ero.sc",
+   "#include 111_05_ero.sc",
+   "#include 113_02_ero.sc",
+   "#include 113_02_ero.sc"
+  ]
+ },
+ ".select": {
+  "count": 8,
+  "arities": {
+   "2": 8
+  },
+  "files": 7,
+  "samples": [
+   ".select 继续聊天:label1 去追宫村:label2",
+   ".select 去看看景:label1 直接回家:label2",
+   ".select 去接宫子:label1 优先工作:label2",
+   ".select 去看看情况:label1 应该没事吧:label2",
+   ".select 遵守与景的约定:label1 留在宫子身边:label2",
+   ".select 我不能辜负摄影部:label1 我只想拍她:label2"
+  ]
+ },
+ ".movie": {
+  "count": 8,
+  "arities": {
+   "5": 8
+  },
+  "files": 3,
+  "samples": [
+   ".movie 10000 ed_moji_test.avi 800 600 f",
+   ".movie 10000 ed_moji_test.avi 800 600 t",
+   ".movie 10001 ef_first_sound.avi 800 600 f",
+   ".movie 10002 ef_ED_sound.avi 800 600 f",
+   ".movie 10010 ef_first_sound.avi 800 600 t",
+   ".movie 10011 ef_ED_sound.avi 800 600 t"
+  ]
+ }
+}

@@ -1,0 +1,68 @@
+区域	起始RVA	结束RVA	长度	原始字节	补丁后字节	变更说明	疑似引擎函数/作用
+.text	0xa6b95	0xa6b96	1	9f	fe	SJIS 前导字节界限：cmp ...,0x9F -> 0xFE（GBK）	文本字符范围检查 ~0x4A6B00
+.text	0xbdc8c	0xbdc90	4	10430000	6034ad76	E8 rel32 -> E8 rel32（改为 DLL 0x100010F0）	替换 r18 补丁 InstallDir 注册表查询：hook 在 .\r18_cn 存在时写入 'r18_cn'，否则返回 0；原调用点为 call 0x4C1FA0（RegOpenKeyExA/RegQueryValueExA）
+.text	0xc3315	0xc3316	1	9f	fe	SJIS 前导字节界限 0x9F -> 0xFE	文本字符范围检查 ~0x4C3200
+.text	0xc3736	0xc373a	4	36f8ffff	c6d9ac76	E8 rel32 -> E8 rel32（改为 DLL 0x10001100）	替换存档目录解析（原调用点为 call 0x4C2F70，SHGetFolderPathW 链）；hook 向 std::string 写入 'save_cn\'
+.text	0xca6ff	0xca700	1	9f	fe	SJIS 界限 0x9F -> 0xFE	字节→字形码映射器 0x4CA6D0
+.text	0xca72f	0xca736	7	81fb4081000075	909090909090eb	cmp 0x8140/jne -> NOP...JMP	跳过 SJIS 全角空格特例
+.text	0xca73c	0xca743	7	885df0c645f100	66895df0909090	mov byte/NOPs -> mov word [ebp-0x10],bx + NOPs	字形映射器构造 2 字节缓冲区（GBK）
+.text	0xca76b	0xca76f	4	81fb6581	e98e0000	cmp 0x8165/jne -> jmp+NOP	跳过 SJIS 特殊符号表
+.text	0xca770	0xca771	1	00	90		
+.text	0xca7fe	0xca811	19	81eb9f840000f7db1bdb83e3f281c3c4000000	c1e008c1eb0809c39090909090909090909090	SJIS 码→字形索引公式 -> shl/shr/or	用 GBK 码字节序处理代替 SJIS 偏移映射
+.text	0xcd668	0xcd669	1	9f	fe	SJIS 界限 0x9F -> 0xFE	文本换行/断词解析器 ~0x4CD644
+.text	0xd969e	0xd969f	1	9f	fe	SJIS 界限 0x9F -> 0xFE	文本字符分类 ~0x4D9693
+.text	0x1185de	0x1185df	1	9f	fe	SJIS 界限 0x9F -> 0xFE	文本测量/截断 ~0x5185D7
+.text	0x118daa	0x118dab	1	9f	fe	SJIS 界限 0x9F -> 0xFE	文本测量/前进宽度 ~0x518DA5
+.text	0x119894	0x119896	2	7581	b8a1	cmp 0x8175 -> 0xA1B8	标点映射（SJIS 半角假名组合 -> GBK '】'）
+.text	0x11989b	0x11989d	2	7781	baa1	cmp 0x8177 -> 0xA1BA	标点映射
+.text	0x1198a2	0x1198a4	2	7681	b9a1	cmp 0x8176 -> 0xA1B9	标点映射
+.text	0x1198a9	0x1198ab	2	7881	bba1	cmp 0x8178 -> 0xA1BB	标点映射
+.text	0x119aed	0x119aee	1	9f	fe	SJIS 界限 0x9F -> 0xFE	文本字符分类 ~0x519AE0
+.text	0x119cd7	0x119cdd	6	0fb608894df0	e8b473a77690	movzx/store -> call DLL 0x10001090 + NOP	在 ScriptEngine 文本循环中 hook GBK 感知的“读下一字符”
+.text	0x125047	0x125048	1	77	eb	ja -> jmp	跳过 SJIS 符号→内部码跳转表（0x91..0xC4）
+.text	0x125090	0x125091	1	01	02	MultiByteToWideChar 代码页 0x4E4(1252)->0x3A8(936)，cch 1->2	为字形轮廓做 字符->Unicode 转换
+.text	0x125093	0x125094	1	55	45	mov word [ebp-8],dx -> ax	存储 2 字节 GBK 字符
+.text	0x125095	0x125096	1	88	8d	构造 1 字节 -> 2 字节字符串	为 MultiByteToWideChar 准备源字符串
+.text	0x125097	0x1250ad	22	f88d45f4506a018d4df8516a0168e40400008955f488	f4506a028d4df8516a0068a80300008955f4ff152c62	调用参数：cp 1252->936、长度 1->2	GBK->UTF-16 转换
+.text	0x1250ae	0x1250b3	5	f9ff152c62	008b55f489	调用目标重定位	调用 MultiByteToWideChar（IAT 0x55622C）
+.text	0x1250b4	0x1250c0	12	0083f80175068b55f88955fc	fc9090909090909090909090	cmp/je 改为 NOP	保留转换后的宽字符，跳过旧的 1 字节判断
+.text	0x12e1c5	0x12e1c6	1	9f	fe	SJIS 界限 0x9F -> 0xFE	脚本/PAZ 文本解码（靠近 .paz 引用 0x12E9E8）
+.text	0x12ecb7	0x12ecb8	1	9f	fe	SJIS 界限 0x9F -> 0xFE	脚本/PAZ 文本解码
+.text	0x12fe65	0x12fe66	1	9f	fe	SJIS 界限 0x9F -> 0xFE	脚本/PAZ 文本解码
+.text	0x130326	0x130327	1	9f	fe	SJIS 界限 0x9F -> 0xFE	脚本/PAZ 文本解码
+.text	0x131066	0x131067	1	9f	fe	SJIS 界限 0x9F -> 0xFE	脚本/PAZ 文本解码
+.text	0x131549	0x13154a	1	9f	fe	SJIS 界限 0x9F -> 0xFE	脚本/PAZ 文本解码
+.text	0x13f150	0x13f151	1	75	eb	jne -> jmp	字体枚举回调（EnumFontFamiliesExA）过滤器
+.text	0x13f16a	0x13f16c	2	75e6	9090	jne -> NOP NOP	字体枚举回调过滤器
+.text	0x13f909	0x13f90a	1	9f	fe	SJIS 界限 0x9F -> 0xFE	字符范围检查 ~0x53F900
+.rdata	0x15fe34	0x15fe39	5	4d65727269	badacce500	'Merri' -> GBK 黑体 + NUL	字体名 'Merriweather MG' -> '黑体'（SimHei）
+.rdata	0x175ecd	0x175ecf	2	bb00	a1bf	SJIS ' ｻ\0' -> GBK ' 】'	0xF37D8 处代码使用的小 .rdata 字符串（文本工具函数）
+.rdata	0x175ed0	0x175ed3	3	ab2000	a1be20	SJIS 'ｫ \0' -> GBK '【 '	0xF37D8 处代码使用的小 .rdata 字符串
+.rdata	0x178e70	0x178e74	4	48656c70	b0efd6fa	'Help (&H)' -> '帮助 (&H)'	弹出菜单标签
+.rdata	0x178e7c	0x178e86	10	41626f75742074686973	b9d8d3da202826412900	'About this application (&A)' -> '关于 (&A)'	弹出菜单标签
+.rdata	0x178e98	0x178ea2	10	6d696e6f726920776562	b9d9cdf8202826502900	'minori web site (&P)' -> '官网 (&P)'	弹出菜单标签
+.rdata	0x178eb0	0x178eb4	4	45786974	cdcbb3f6	'Exit Program (&X)' -> '退出 (&X)'	弹出菜单标签
+.rdata	0x178eb5	0x178eba	5	50726f6772	2826582900		
+.rdata	0x178ec4	0x178ec8	4	46756c6c	c8abc6c1	'Full screen' -> '全屏 (&O)'	弹出菜单标签
+.rdata	0x178ec9	0x178ece	5	7363726565	28264f2900		
+.rdata	0x178ed8	0x178eea	18	4f726967696e616c2073637265656e207369	bbb9d4adb4b0bfdab4f3d0a1202826572900	'Original screen size' -> '还原窗口大小 (&W)'	弹出菜单标签
+.rdata	0x178ef4	0x178f02	14	486967682d507265636973696f6e	b8dfd6cac1bfc6c1c4bbc0adc9ec	'High-Precision screen stretch' -> '高质量屏幕拉伸 (&Y)'	弹出菜单标签
+.rdata	0x178f03	0x178f08	5	7363726565	2826592900		
+.rdata	0x178f1c	0x178f30	20	416e74692d416c6961732073637265656e207374	b7b4bee2b3ddc6c1c4bbc0adc9ec202826412900	'Anti-Alias screen stretch' -> '反锯齿屏幕拉伸 (&A)'	弹出菜单标签
+.rdata	0x178f40	0x178f44	4	47616d65	d3cecfb7	'Game (&G)' -> '游戏 (&G)'	弹出菜单标签
+.rdata	0x1797c8	0x1797d6	14	52657475726e20746f206d656e75	b7b5bbd8b2cbb5a52028264d2900	'Return to menu' -> '返回菜单 (&M)'	弹出菜单标签
+.rdata	0x1797dc	0x1797ea	14	52657475726e20746f20746f7020	b7b5bbd8b1eacce22028264d2900	'Return to top' -> '返回标题 (&M)'	弹出菜单标签
+.rdata	0x1797f4	0x179804	16	48696465206d6573736167652070616e	d2feb2d8b6d4bbb0bff2202826482900	'Hide message pan' -> '隐藏对话框 (&H)'	弹出菜单标签
+.rdata	0x17980c	0x17981c	16	53686f77206d6573736167652070616e	cfd4cabeb6d4bbb0bff2202826482900	'Show message pan' -> '显示对话框 (&H)'	弹出菜单标签
+.rdata	0x179824	0x179828	4	506c6179	d7d4b6af	'Play autom' -> '自动 (&A)'	弹出菜单标签
+.rdata	0x179829	0x17982e	5	6175746f6d	2826412900		
+.rdata	0x17983c	0x179840	4	536b6970	ccf8b9fd	'Skip messa' -> '跳过 (&K)'	弹出菜单标签
+.rdata	0x179841	0x179846	5	6d65737361	28264b2900		
+.rdata	0x179850	0x17985e	14	517569636b207361766520282651	bfeccbd9b4e6b5b5202826512900	'Quick save (&Q' -> '快速存档 (&Q)'	弹出菜单标签
+.rdata	0x179860	0x179864	4	53617665	b4e6b5b5	'Save (&S)' -> '存档 (&S)'	弹出菜单标签
+.rdata	0x17986c	0x179870	4	4c6f6164	b6c1b5b5	'Load (&L)' -> '读档 (&L)'	弹出菜单标签
+.rdata	0x179878	0x179886	14	53797374656d20636f6e66696775	cfb5cdb3c9e8d6c3202826432900	'System configu' -> '系统设置 (&C)'	弹出菜单标签
+.rdata	0x1828d0	0x1828ea	26	5468657265206973206d6f7265207468616e0a2020206f6e6520	d7d6cce5b2e2cad4cec4b1be0ab2e2cad4d7d6cce5cfd4cabe00	'There is more than\n   one fairy tale.' -> '字体测试文本\n测试字体显示'	设置对话框中的字体示例文本
+.rdata-IAT(hook)	0x1562c4	0x1562c8	4	ee461a00	<DLL LoadStringA wrapper 0x10001AD0>	exe USER32 IAT 第 12 槽：LoadStringA	hInstance 交换包装函数（DllMain 时安装）
+.rdata-IAT(hook)	0x156304	0x156308	4	584b1a00	<DLL DialogBoxParamA wrapper 0x10001B00>	exe USER32 IAT 第 28 槽：DialogBoxParamA	hInstance 交换包装函数（DllMain 时安装）
+.rsrc(IAT)	0x22b740	0x22b744	4	5bb72200	<resolved DLL DirA address>	新增静态导入的 IAT 槽（hint/name 位于 RVA 0x22B75B = "DirA"）	加载器填充；该导入仅用于强制加载 DLL

@@ -1,7 +1,5 @@
-# 本地设计/逆向资料、协作说明、素材和生成清单不进入公开仓库。
+# 素材、工作区证据与本地协作说明不入库；docs/ 作为项目文档提交。
 /AGENTS.md
-/AGENT.md
-/docs/
 /assets/
 /work/
 /analysis/
