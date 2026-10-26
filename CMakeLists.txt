@@ -13,6 +13,7 @@ include(cmake/Dependencies.cmake)
 
 add_library(ef_core
     src/settings/font_settings.cpp
+    src/settings/window_settings.cpp
     src/core/display.cpp
     src/core/utf8.cpp
     src/data/content.cpp
@@ -115,6 +116,10 @@ if(BUILD_TESTING)
     target_link_libraries(ef_font_settings_tests PRIVATE ef_core)
     ef_compile_options(ef_font_settings_tests)
     add_test(NAME font_settings COMMAND ef_font_settings_tests)
+    add_executable(ef_window_settings_tests tests/window_settings_tests.cpp)
+    target_link_libraries(ef_window_settings_tests PRIVATE ef_core)
+    ef_compile_options(ef_window_settings_tests)
+    add_test(NAME window_settings COMMAND ef_window_settings_tests)
     add_executable(ef_audio_tests tests/audio_tests.cpp)
     target_link_libraries(ef_audio_tests PRIVATE ef_audio)
     target_compile_definitions(ef_audio_tests PRIVATE EF_AUDIO_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/audio-tone.ogg")
@@ -209,6 +214,11 @@ if(BUILD_TESTING)
             add_test(NAME font_faces COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/font_customization_smoke.py --faces-only
                 --faces-binary $<TARGET_FILE:ef_font_faces_tests>)
+        endif()
+        if(EF_BUILD_APP AND EF_XVFB_RUN)
+            add_test(NAME window_geometry COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/window_geometry_smoke.py --binary $<TARGET_FILE:ef_native>)
+            set_tests_properties(window_geometry PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
         endif()
         if(EF_BUILD_APP AND EF_FFMPEG_FOUND)
             add_test(NAME movie_decode COMMAND ${Python3_EXECUTABLE}

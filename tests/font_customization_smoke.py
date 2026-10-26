@@ -36,7 +36,8 @@ def main():
     config.parent.mkdir(exist_ok=True)
     config.unlink(missing_ok=True)
     env = dict(os.environ, SDL_VIDEO_DRIVER='x11', LIBGL_ALWAYS_SOFTWARE='1')
-    base = [str(args.binary), '--content', str(out), '--font-config', str(config)]
+    base = [str(args.binary), '--content', str(out), '--font-config', str(config),
+        '--window-config', str(out/'preferences/window.json'), '--width', '1000', '--height', '750']
 
     def run(extra, success=True):
         result = subprocess.run(base+extra, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)

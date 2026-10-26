@@ -6,7 +6,7 @@
 
 ## 1. 当前 HEAD 与工作区
 
-- 最新提交：本次 `.movie` 阻塞式视频播放实现（FFmpeg 开发包可选；见 [MOVIE-20261026.md](MOVIE-20261026.md)）；此前 `13499a7 feat: 支持舞台立绘底部裁切与整数居中`、`dbaa84d feat: 实现取景器计时、电量与舞台快照`（含 `.frame`/取景器），资源优先级基线 `ce35020`。docs/ 已随文档提交入库；`AGENTS.md` 仍为本地协作说明不提交，`assets/`、`work/`、`analysis/`、`content/` 继续不入库。工作区另有用户未提交的 `.shakeScreen` 分支 WIP，勿混入本快照。
+- 最新提交：本次窗口自适应与尺寸记忆（4:3 档位、`window.json`、`--window-config`；见 [WINDOW-LAYOUT-20261026.md](WINDOW-LAYOUT-20261026.md)）；此前 `.movie` 阻塞播放实现（[MOVIE-20261026.md](MOVIE-20261026.md)）、`13499a7 feat: 支持舞台立绘底部裁切与整数居中`、`dbaa84d feat: 实现取景器计时、电量与舞台快照`，资源优先级基线 `ce35020`。docs/ 已随文档提交入库；`AGENTS.md` 仍为本地协作说明不提交，`assets/`、`work/`、`analysis/`、`content/` 继续不入库。工作区另有用户未提交的脚本 JSON/震屏 WIP，勿混入本快照。
 - 近期提交（2026-10-25/26，尾部）：
   - `06ca3da` 接通基础场景演出与原版音频播放
   - `a6ebf06` 全屏文本续写与分组清页
@@ -18,8 +18,8 @@
   - `aba8c78` 转场计数器统一整数步进并标注采样依据
   - `3004b44` speed>255 转场对所有类型立即完成
   - `ce35020` 按原版优先级解析 bg/st 同名立绘
-- 本机 `build/dev` 自动测试当前 **26/26 PASS**，core ASan **18/18 PASS**；接入 FFmpeg 开发包的构建为 **27/27**（额外 `movie_decode` 解码冒烟）；最近实现记录文档：
-  `RUNTIME-STAGE-AUDIO-20261025.md`、`MESSAGE-UI-20261025.md`、`PANEL-TRANSITION-20261025.md`、`NVL-FLOW-20261025.md`、`AUDIO-CROSSFADE-20261026.md`、`SCREEN-20261026.md`、`SHAKE-OVERLAY-20261026.md`、`HSV-MASK-20261026.md`、`CUTIN-WALKING-20261026.md`、`SPECIAL-TRANSITION-20261026.md`、`MOVIE-20261026.md`（文档已纳入 docs/；原始证据与运行产物不入库）。
+- 本机 `build/dev` 自动测试当前 **28/28 PASS**，core ASan **19/19 PASS**；接入 FFmpeg 开发包的构建为 **29/29**（额外 `movie_decode` 解码冒烟）；最近实现记录文档：
+  `RUNTIME-STAGE-AUDIO-20261025.md`、`MESSAGE-UI-20261025.md`、`PANEL-TRANSITION-20261025.md`、`NVL-FLOW-20261025.md`、`AUDIO-CROSSFADE-20261026.md`、`SCREEN-20261026.md`、`SHAKE-OVERLAY-20261026.md`、`HSV-MASK-20261026.md`、`CUTIN-WALKING-20261026.md`、`SPECIAL-TRANSITION-20261026.md`、`MOVIE-20261026.md`、`WINDOW-LAYOUT-20261026.md`（文档已纳入 docs/；原始证据与运行产物不入库）。
 
 ## 2. 里程碑状态
 
@@ -53,6 +53,7 @@
 - 文字：FreeType 实际像素字形（Noto Sans CJK TTC face 可配置）、自定义/回退字体、描边与阴影、基线偏移、CJK 禁则、预排版 + 逐码点揭示、全屏续写/分组清页；
 - 消息窗：模式 1/2/3 几何与姓名规则、长消息上移、推进条 12 帧、面板交叠切换（约 160 ms 原版时钟）；
 - 影片：`.movie` 阻塞播放（FFmpeg 解码→纹理按目标矩形绘制、音频混入 SDL 输出、可跳过影片按键/左键结束）；`opening.sc` / `movie.sc` 真实素材验证；FFmpeg 开发包缺失时严格未支持；
+- 窗口：默认按显示器可用区域选最大 4:3 档位、自由拖动缩放/居中 letterbox；退出保存尺寸+最大化，损坏/越界配置回退自适应；`--window-config` 可控路径；验证见 WINDOW-LAYOUT 文档；
 - 演出/音频：基础 `.stage`（背景/裁切/前景底对齐）、开场雪花、BGM/SE/SE2/voice 播放、跨曲交叠淡化与退场声部、`.shakeScreen`/`.overlay`/`.HSVfilter`、`.transition` type0/1/2/14/16/17（含 200 项缩放表叠影历史帧）、`.effect` Cutin/WScroll2/end；
 - 自动化：ctest 25/25（含音频/合成/转场像素回归）、core ASan 18/18 通过；Xvfb 渲染/键盘/EGL 检查 PASS；真实素材 4×→8×→4× 与 100 条消息追踪 PASS；e/j 开场严格 trace 1694 消息基线无回归，8 个转场脚本 24/30 点位真实执行通过。
 

@@ -76,6 +76,10 @@ python3 tools/prepare_content.py --all --game-root "$GAME" --jobs 4
 ```
 
 F11 切换无边框全屏，F10 最大化/还原，Esc 返回/退出。
+窗口初始尺寸默认按主显示器可用区域选择最大的 4:3 档位（800×600 / 1200×900 / … / 3200×2400），
+可自由拖动缩放，画面始终居中 letterbox；退出时把窗口尺寸和最大化状态写入
+`$XDG_CONFIG_HOME/ef-native/window.json`（回退 `~/.config/ef-native/window.json`），下次启动恢复。
+`--width N --height N` 显式覆盖（必须成对），`--window-config FILE` 指定记忆文件；全屏状态不持久化。
 普通窗口请求 4× 素材，最大化/全屏请求 8×；缺少高档资源会记录回退。
 R 可重载图像预览；剧本会话需重启以重新读取内容。
 

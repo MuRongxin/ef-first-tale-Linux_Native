@@ -5,7 +5,7 @@
 namespace ef {
 struct Options {
     std::filesystem::path content{"content"}, screenshot;
-    int width{1000}, height{750}, frames{};
+    int width{}, height{}, frames{}; // 0 = adaptive 4:3 tier from the display
     bool fullscreen{}, maximized{}, validate{}, smoke{};
     std::string script;
     char variant{'e'};
@@ -13,7 +13,7 @@ struct Options {
     int trace_messages{}, start_line{};
     bool silent{};
     int text_speed{40};
-    std::filesystem::path font_config;
+    std::filesystem::path font_config, window_config;
     std::optional<std::filesystem::path> font_file;
     std::optional<int> font_face, font_percent;
     bool default_font{};

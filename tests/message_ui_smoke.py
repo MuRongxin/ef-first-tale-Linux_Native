@@ -62,7 +62,9 @@ def main():
     for name in ("normal", "cinema", "long"):
         capture = out / (name + ".ppm")
         result = subprocess.run([str(args.binary), "--content", str(out), "--script", "scr/"+name+".sc", "--silent",
-                                 "--text-speed", "0", "--frames", "100", "--screenshot", str(capture)], env=environment, capture_output=True, timeout=20)
+                                 "--text-speed", "0", "--frames", "100", "--screenshot", str(capture),
+                                 "--window-config", str(out/"window.json"), "--width", "1000", "--height", "750"],
+                                env=environment, capture_output=True, timeout=20)
         (out / (name + ".log")).write_bytes(result.stdout + result.stderr)
         if result.returncode:
             raise AssertionError(result.stderr.decode(errors="replace"))

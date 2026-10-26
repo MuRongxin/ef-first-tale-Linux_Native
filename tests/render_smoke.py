@@ -86,7 +86,8 @@ def main():
     environment = dict(os.environ, SDL_VIDEO_DRIVER="x11", LIBGL_ALWAYS_SOFTWARE="1")
 
     def run(name, *arguments, success=True):
-        command = [str(args.binary.resolve()), "--content", str(out), *arguments]
+        command = [str(args.binary.resolve()), "--content", str(out),
+                   "--window-config", str(out / "window.json"), *arguments]
         result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=45)
         (out / f"{name}.log").write_text(result.stdout + result.stderr)
         if (result.returncode == 0) != success:

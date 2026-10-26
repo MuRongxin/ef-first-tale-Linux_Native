@@ -42,7 +42,9 @@ int main(int argc, char** argv) {
                              "  --silent              Advance audio silently without opening a device\n"
                              "  --text-preview        Proofreading only: report and skip unimplemented commands\n"
                              "  --trace-messages N    Headless script check, require N messages; stops at choices\n"
-                             "  --width N --height N  Initial window size (320..16384 / 240..16384)\n"
+                             "  --width N --height N  Initial window size (320..16384 / 240..16384);\n"
+                             "                        default auto: largest 4:3 tier fitting the display\n"
+                             "  --window-config FILE  Override remembered window geometry path\n"
                              "  --maximized           Start maximized (8x)\n"
                              "  --fullscreen          Start in desktop/borderless fullscreen (8x)\n"
                              "  --frames N            Exit after N rendered frames\n"
@@ -77,6 +79,7 @@ int main(int argc, char** argv) {
             else if (arg == "--screenshot") options.screenshot = value();
             else if (arg == "--width") options.width = integer(320, 16384);
             else if (arg == "--height") options.height = integer(240, 16384);
+            else if (arg == "--window-config") options.window_config = value();
             else if (arg == "--frames") options.frames = integer(1, 1000000);
             else if (arg == "--maximized") options.maximized = true;
             else if (arg == "--fullscreen") options.fullscreen = true;
@@ -84,6 +87,8 @@ int main(int argc, char** argv) {
             else if (arg == "--smoke") options.smoke = true;
             else throw std::runtime_error("Unknown option: " + std::string(arg));
         }
+        if ((options.width == 0) != (options.height == 0))
+            throw std::runtime_error("--width and --height must be used together");
         if (options.smoke && (options.maximized || options.fullscreen || options.frames || options.validate))
             throw std::runtime_error("--smoke requires a normal window and cannot combine with --frames/--validate-content");
         if (!options.screenshot.empty() && (!(options.frames || options.smoke) || options.validate))

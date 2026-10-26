@@ -55,7 +55,8 @@ def main():
             for name, source in cases.items():
                 expected = [(line, text.split()[1]) for line, text in enumerate(source.splitlines(), 1) if text.startswith(".message ")]
                 process = subprocess.Popen([str(args.binary), "--content", str(out), "--script", "scr/"+name+".sc", "--silent",
-                    "--text-speed", "0", "--frames", "180", "--screenshot", str(out / (name+".ppm"))],
+                    "--text-speed", "0", "--frames", "180", "--screenshot", str(out / (name+".ppm")),
+                    "--window-config", str(out/"window.json"), "--width", "1000", "--height", "750"],
                     env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 output = b""
                 step = 0

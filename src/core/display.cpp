@@ -3,6 +3,28 @@
 #include <cmath>
 
 namespace ef {
+WindowSize adaptive_window_size(int usable_width, int usable_height) {
+    if (usable_width <= 0 || usable_height <= 0) return {800, 600};
+    const int available_width = usable_width * 9 / 10;
+    const int available_height = usable_height * 9 / 10;
+    static constexpr WindowSize tiers[]{
+        {800,600},{1200,900},{1600,1200},{2000,1500},{2400,1800},{3200,2400}};
+    constexpr std::size_t tier_count = sizeof(tiers) / sizeof(tiers[0]);
+    for (std::size_t n = tier_count; n-- > 0;)
+        if (tiers[n].width <= available_width && tiers[n].height <= available_height) return tiers[n];
+    // Very small displays: keep 4:3 and the application minimum (320x240).
+    const int unit = std::max(80, std::min(usable_width / 4, usable_height / 3));
+    return {unit * 4, unit * 3};
+}
+WindowSize resolve_window_size(int explicit_width, int explicit_height,
+                               int remembered_width, int remembered_height,
+                               int usable_width, int usable_height) {
+    if (explicit_width > 0 && explicit_height > 0) return {explicit_width, explicit_height};
+    const bool remembered = remembered_width >= 320 && remembered_height >= 240 &&
+        remembered_width <= usable_width && remembered_height <= usable_height;
+    if (remembered) return {remembered_width, remembered_height};
+    return adaptive_window_size(usable_width, usable_height);
+}
 float Viewport::scale() const { return static_cast<float>(width) / design_width; }
 std::optional<Point> Viewport::to_design(float px, float py) const {
     const float local_x = px - static_cast<float>(x);

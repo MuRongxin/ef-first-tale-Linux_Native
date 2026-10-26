@@ -70,7 +70,8 @@ def main():
             xtest.XTestFakeKeyEvent(display, code, 1, 0)
             xtest.XTestFakeKeyEvent(display, code, 0, 0)
             x11.XFlush(display)
-        process = subprocess.Popen([str(args.binary), "--content", str(out), "--script", "scr/start.sc", "--frames", "240", "--screenshot", str(out / "script.ppm")],
+        process = subprocess.Popen([str(args.binary), "--content", str(out), "--script", "scr/start.sc", "--frames", "240", "--screenshot", str(out / "script.ppm"),
+                                    "--window-config", str(out/"window.json"), "--width", "1000", "--height", "750"],
                                    env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         output = b""
         try:

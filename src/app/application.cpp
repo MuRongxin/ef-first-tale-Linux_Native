@@ -5,6 +5,7 @@
 #include "data/content.hpp"
 #include "render/renderer.hpp"
 #include "scene/scene.hpp"
+#include "settings/window_settings.hpp"
 #include "text/font.hpp"
 #ifdef EF_HAS_FFMPEG
 #include "video/movie_player.hpp"
@@ -25,21 +26,37 @@ class Window {
 public:
     SDL_Window* handle{};
     SDL_GLContext context{};
-    explicit Window(const Options& options) {
+    Window(const Options& options, const WindowSettings& remembered) {
         checked(SDL_Init(SDL_INIT_VIDEO), "SDL_Init");
         try {
             checked(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3), "GL major version");
             checked(SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3), "GL minor version");
             checked(SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE), "GL core profile");
             checked(SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1), "GL double buffer");
+            SDL_Rect usable{};
+            const SDL_DisplayID display = SDL_GetPrimaryDisplay();
+            if (!display || (!SDL_GetDisplayUsableBounds(display, &usable) && !SDL_GetDisplayBounds(display, &usable)))
+                usable = {};
+            const auto requested = resolve_window_size(options.width, options.height,
+                remembered.width, remembered.height, usable.w, usable.h);
+            const bool explicit_size = options.width > 0 && options.height > 0;
+            const bool start_maximized = options.maximized || (!explicit_size && remembered.maximized);
+            const bool start_fullscreen = options.fullscreen;
+            last_windowed_ = requested;
+            maximized_ = start_maximized;
             auto flags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-            if (options.maximized) flags |= SDL_WINDOW_MAXIMIZED;
-            handle = SDL_CreateWindow("ef - the first tale. | Native preview", options.width, options.height, flags);
+            if (start_maximized) flags |= SDL_WINDOW_MAXIMIZED;
+            handle = SDL_CreateWindow("ef - the first tale. | Native preview",
+                requested.width, requested.height, flags);
             if (!handle) throw std::runtime_error(std::string("SDL_CreateWindow: ") + SDL_GetError());
             checked(SDL_SetWindowMinimumSize(handle, 320, 240), "Minimum window size");
             // A null fullscreen mode selects desktop/borderless; never exclusive.
             checked(SDL_SetWindowFullscreenMode(handle, nullptr), "Borderless fullscreen mode");
-            if (options.fullscreen) checked(SDL_SetWindowFullscreen(handle, true), "Fullscreen");
+            if (start_fullscreen) {
+                maximized_before_fullscreen_ = maximized_;
+                fullscreen_ = true;
+                checked(SDL_SetWindowFullscreen(handle, true), "Fullscreen");
+            }
             context = SDL_GL_CreateContext(handle);
             if (!context) throw std::runtime_error(std::string("SDL_GL_CreateContext: ") + SDL_GetError());
             if (!SDL_GL_SetSwapInterval(1)) std::cerr << "[video] vsync unavailable; frame pacing enabled\n";
@@ -48,14 +65,63 @@ public:
     ~Window() { cleanup(); }
     Window(const Window&) = delete;
     Window& operator=(const Window&) = delete;
+    // Track windowed geometry independently of maximize/fullscreen; only the last
+    // non-maximized, non-fullscreen size is persisted.
+    void track(const SDL_Event& event) {
+        if (event.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN) {
+            maximized_before_fullscreen_ = maximized_;
+            fullscreen_ = true;
+            return;
+        }
+        if (event.type == SDL_EVENT_WINDOW_LEAVE_FULLSCREEN) {
+            fullscreen_ = false;
+            maximized_ = maximized_before_fullscreen_;
+            return;
+        }
+        if (event.type != SDL_EVENT_WINDOW_RESIZED && event.type != SDL_EVENT_WINDOW_MAXIMIZED &&
+            event.type != SDL_EVENT_WINDOW_RESTORED && event.type != SDL_EVENT_WINDOW_MINIMIZED &&
+            event.type != SDL_EVENT_WINDOW_DISPLAY_CHANGED)
+            return;
+        const auto flags = SDL_GetWindowFlags(handle);
+        fullscreen_ = (flags & SDL_WINDOW_FULLSCREEN) != 0;
+        if (event.type == SDL_EVENT_WINDOW_MAXIMIZED) {
+            maximized_ = true;
+            return;
+        }
+        if (event.type == SDL_EVENT_WINDOW_RESTORED) {
+            // A restore always leaves the maximized state; update the windowed size here in
+            // case the WM reports RESTORED before RESIZED.
+            maximized_ = false;
+            if (!fullscreen_) {
+                int width{}, height{};
+                if (SDL_GetWindowSize(handle, &width, &height) && width >= 320 && height >= 240)
+                    last_windowed_ = {width, height};
+            }
+            return;
+        }
+        if (event.type == SDL_EVENT_WINDOW_DISPLAY_CHANGED) return;
+        const bool maximized = (flags & SDL_WINDOW_MAXIMIZED) != 0;
+        if (!fullscreen_ && !maximized) {
+            int width{}, height{};
+            if (SDL_GetWindowSize(handle, &width, &height) && width >= 320 && height >= 240)
+                last_windowed_ = {width, height};
+            maximized_ = false;
+        } else if (maximized && !fullscreen_) {
+            maximized_ = true;
+        }
+    }
+    [[nodiscard]] WindowSettings saveable_settings() const {
+        return {last_windowed_.width, last_windowed_.height, maximized_};
+    }
 private:
+    WindowSize last_windowed_{800, 600};
+    bool maximized_{}, maximized_before_fullscreen_{}, fullscreen_{};
     void cleanup() {
         if (context) SDL_GL_DestroyContext(context);
         if (handle) SDL_DestroyWindow(handle);
         SDL_Quit();
     }
-};
-}
+};}
 int run(const Options& options) {
     Content content(options.content);
     if (options.audit_resources) {
@@ -126,7 +192,17 @@ int run(const Options& options) {
         std::cout << "Content validation PASS: " << content.assets().size() << " images, " << scene.layers.size() << " layers\n";
         return 0;
     }
-    Window window(options);
+    std::filesystem::path window_config = options.window_config;
+    if (window_config.empty()) {
+        try { window_config = default_window_config(); }
+        catch (const std::exception& e) { std::cerr << "[window] Cannot locate window preferences: " << e.what() << '\n'; }
+    }
+    WindowSettings remembered;
+    if (!window_config.empty()) {
+        try { remembered = load_window_settings(window_config); }
+        catch (const std::exception& e) { std::cerr << "[window] Cannot read geometry; using auto: " << e.what() << '\n'; }
+    }
+    Window window(options, remembered);
     Renderer renderer;
     // Declared after the GL context: all glyph/texture destructors run before it.
     auto font = create_font();
@@ -182,6 +258,7 @@ int run(const Options& options) {
         const auto frame_start = SDL_GetTicksNS();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            window.track(event);
             if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
 #ifdef EF_HAS_FFMPEG
             if (movie && script && script->presentation().movie_active()) {
@@ -390,6 +467,10 @@ int run(const Options& options) {
         if (finished) break;
         const auto elapsed = SDL_GetTicksNS() - frame_start;
         if (elapsed < 16'666'667ULL) SDL_DelayNS(16'666'667ULL - elapsed);
+    }
+    if (!window_config.empty()) {
+        try { save_window_settings(window_config, window.saveable_settings()); }
+        catch (const std::exception& e) { std::cerr << "[window] Geometry not saved: " << e.what() << '\n'; }
     }
     std::cout << "Exit: frames=" << frames << " fixed_ticks=" << ticks << '\n';
     return 0;

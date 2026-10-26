@@ -10,6 +10,13 @@ constexpr AssetTier asset_tier(bool maximized, bool fullscreen) {
     return maximized || fullscreen ? AssetTier::x8 : AssetTier::x4;
 }
 struct Point { float x{}, y{}; };
+struct WindowSize { int width{}, height{}; };
+// Initial 4:3 window tiers: the largest one that fits in 90% of the usable display.
+[[nodiscard]] WindowSize adaptive_window_size(int usable_width, int usable_height);
+// Startup precedence: explicit CLI size > remembered size when it still fits > adaptive.
+[[nodiscard]] WindowSize resolve_window_size(int explicit_width, int explicit_height,
+                                             int remembered_width, int remembered_height,
+                                             int usable_width, int usable_height);
 struct Viewport {
     int x{}, y{}, width{}, height{}; // top-left origin, physical pixels
     [[nodiscard]] float scale() const;
