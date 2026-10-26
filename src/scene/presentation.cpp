@@ -156,7 +156,9 @@ bool Presentation::command(const Instruction& instruction) {
         previous_ = current(); current_ = std::move(next); background_ = background;
         scroll_.reset(); wait_scroll_ = false;
         active_type_=transition_type_; active_speed_=speed_; active_mask_=transition_mask_;
-        ++revision_; elapsed_ = 0; fading_ = active_type_>=2 || active_speed_ <= 255;
+        // Native main loop passes (speed > 255) to the transition dispatcher as "finish now",
+        // for every type (0x4e11a0 case 0xe setg -> 0x53adc0 param_1 -> immediate new-frame copy).
+        ++revision_; elapsed_ = 0; fading_ = active_speed_ <= 255;
         if (!fading_) previous_.clear();
     } else if (cmd == ".vscroll" || cmd == ".hscroll" || cmd == ".scroll") {
         count(instruction,cmd == ".scroll" ? 3 : 2,cmd == ".scroll" ? 3 : 2);

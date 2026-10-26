@@ -52,14 +52,19 @@ int main() {
         Content content(temp.path);Presentation stage(content);
         const auto command=[&](const std::string& text) { return stage.command(parse_script(text+"\n","scr/test.sc").at(0)); };
         for (const int type : {14,16,17}) {
-            command(".transition "+std::to_string(type)+" * 400");command(".stage * image 0 0");
-            require(stage.busy(),"Speed400 incorrectly bypassed special transition");
-            const int ticks=type==16 ? 15 : 20;
+            command(".transition "+std::to_string(type)+" * 200");command(".stage * image 0 0");
+            require(stage.busy(),"Speed200 incorrectly bypassed special transition");
+            const int ticks=type==16 ? 30 : 40;
             stage.update(static_cast<double>(ticks)/100);
             require(stage.busy() && stage.progress()<1,"Boundary equality must remain busy");
             command(".transition 0 * 9999");
             require(stage.transition_type()==type,"Pending type changed active state");
             stage.update(.01);require(!stage.busy(),"Strictly beyond edge did not complete");
+        }
+        for (const int type : {14,16,17}) {
+            command(".transition "+std::to_string(type)+" * 400");command(".stage * image 0 0");
+            require(!stage.busy() && stage.progress()==1 && stage.previous().empty(),
+                "Speed>255 must complete immediately for every type");
         }
         command(".transition 14 * 12");command(".stage * image 0 0");stage.update(6.67);
         require(stage.busy(),"Integer dispatcher truncation lost the edge tick");stage.update(.01);require(!stage.busy(),"Type14 final tick");
@@ -79,12 +84,12 @@ int main() {
         rejects([&] { command(".transition 3 * 20"); });rejects([&] { command(".transition 2 * 10"); });
         rejects([&] { command(".transition 16 image 400"); });
         auto program=std::make_shared<Program>();program->id="scr/ordering.sc";
-        program->instructions=parse_script(".transition 17 * 400\n.stage * image 0 0\n.message 1   after\n.end\n",program->id);
+        program->instructions=parse_script(".transition 17 * 200\n.stage * image 0 0\n.message 1   after\n.end\n",program->id);
         ScriptRuntime runtime([&](const std::string&) { return program; },[](const std::string&,const std::string& s) { return s; },program->id);
         runtime.set_host({[&](const Instruction& i) { return stage.command(i); },{},[&](double dt) { stage.update(dt); },[&] { return stage.busy(); },{}});
-        runtime.update(0);runtime.advance();runtime.update(.2);
+        runtime.update(0);runtime.advance();runtime.update(.4);
         require(runtime.message_serial()==0 && stage.busy(),"Input or message bypassed transition");
         runtime.update(.01);require(runtime.message_serial()==1 && runtime.diagnostics().empty(),"Message did not follow strict boundary");
-        std::cout << "Transition clocks PASS: expansion directions, zoom crops, integer dispatch, speed400, exact edges, strict boundaries and message ordering\n";
+        std::cout << "Transition clocks PASS: expansion directions, zoom crops, integer dispatch, speed>255 immediate cuts, exact edges, strict boundaries and message ordering\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n';return 1; }
 }
