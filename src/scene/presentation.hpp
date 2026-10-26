@@ -25,6 +25,7 @@ public:
     bool shaking() const { return shake_ && !shake_->finished(); }
     ShakeFrame shake_frame() const { return shake_ ? shake_->frame() : ShakeFrame{}; }
     std::uint64_t shake_serial() const { return shake_serial_; }
+    const std::string& transition_mask() const { return active_mask_; }
     AudioMixer& mixer() { return mixer_; }
     void realtime_audio(bool enabled) { realtime_ = enabled; }
 private:
@@ -42,7 +43,9 @@ private:
     std::uint64_t shake_serial_{};
     std::vector<Layer> previous_, current_;
     std::uint64_t revision_{};
-    int speed_{9999}, panel_{3};
+    int speed_{9999}, panel_{3},active_speed_{9999},transition_type_{},active_type_{};
+    std::string transition_mask_,active_mask_;
+    std::array<std::array<int,3>,2> hsv_{};
     double elapsed_{};
     bool fading_{};
     struct Scroll { std::size_t layer; float x, y, target_x, target_y; double elapsed{}, speed{}; };

@@ -21,9 +21,9 @@ int main() {
         nlohmann::json manifest{{"version",1},{"design_size",{800,600}},{"entry_scene","unused.json"},{"font",{{"path","unused.ttf"}}},
             {"development",true},{"resources","catalog.json"},{"images",nlohmann::json::object()}};
         nlohmann::json catalog{{"version",1},{"entries",nlohmann::json::object()}};
-        for (const auto* name : {"wide.png","actor.png","frame.png"}) {
+        for (const auto* name : {"wide.png","actor.png","frame.png","mask.png"}) {
             const std::string id = std::string("bg/")+name;
-            const auto size = std::string(name)=="wide.png" ? nlohmann::json{1600,1800} : nlohmann::json{200,600};
+            const auto size = std::string(name)=="wide.png" ? nlohmann::json{1600,1800} : std::string(name)=="mask.png" ? nlohmann::json{800,600} : nlohmann::json{200,600};
             manifest["images"][id] = {{"source_sha256",std::string(64,'a')},{"design_size",size},{"variants",{{"1",{{"path","unused.png"},{"pixels",size}}}}}};
             catalog["entries"][id] = {{"kind","image"},{"name",name},{"tag","bg"},{"source_sha256",std::string(64,'a')}};
         }
@@ -148,6 +148,31 @@ int main() {
         stage.update(3); command(".overlay * * *\n"); command(".stage frame.png wide.png 0 0 actor.png 400\n");
         for (const auto& layer : stage.current()) require(layer.overlay.empty(),"Overlay wildcard clears all scopes");
         rejects([&] { command(".overlay shade_a\n"); });
+        stage.update(3);
+        const auto material_revision=stage.revision();
+        command(".HSVfilter 9 -25 -8 5 -5 0\n");
+        require(stage.current()[0].hsv==std::array<int,3>{} && stage.revision()==material_revision,"HSV mutated displayed scene");
+        command(".transition 1 mask.png 20\n");
+        command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        require(stage.current()[0].hsv==std::array<int,3>{9,-25,-8} && stage.current()[1].hsv==std::array<int,3>{5,-5,0} && stage.current()[2].hsv==std::array<int,3>{},"HSV background/foreground/frame scopes");
+        require(stage.busy() && stage.transition_mask()=="bg/mask.png","Masked transition did not block");
+        stage.update(1.28); require(std::abs(stage.progress()-.5f)<.001f && stage.busy(),"Masked transition must use 512 threshold");
+        command(".transition 1 mask.png 30\n");
+        require(std::abs(stage.progress()-.5f)<.001f,"Pending speed changed active transition");
+        stage.update(1.27); require(stage.busy(),"Masked transition finished early");
+        stage.update(.01); require(!stage.busy(),"Masked transition did not finish at 512");
+        rejects([&] { command(".HSVfilter 0 0 0 bad 0 0\n"); });
+        rejects([&] { command(".transition 1 wide.png 20\n"); });
+        rejects([&] { command(".transition 1 missing 20\n"); });
+        rejects([&] { command(".transition 2 * 20\n"); });
+        command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        require(stage.transition_mask()=="bg/mask.png" && stage.current()[0].hsv==std::array<int,3>{9,-25,-8},"Invalid pending updates must be atomic");
+        stage.update(3); command(".HSVfilter 999 -999 999 -999 999 -999\n"); command(".transition 0 * 9999\n");
+        command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        require(stage.current()[0].hsv==std::array<int,3>{180,-100,100} && stage.current()[1].hsv==std::array<int,3>{-180,100,-100},"Native HSV clamping");
+        require(stage.transition_mask().empty() && !stage.busy(),"Type zero should clear masked transition");
+        command(".HSVfilter 0 0 0 0 0 0\n"); command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        for (const auto& layer : stage.current()) require(layer.hsv==std::array<int,3>{},"Zero HSV reset");
         std::cout << "Presentation tests PASS: scene placement, crossfade, scroll waits, panel, voiced messages and audio commands\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

@@ -37,13 +37,13 @@ public:
     // Layers are composed on opaque black before the complete scenes are blended.
     // Text layers are ignored here; callers render text after the stage.
     void stage(const Content& content, const std::vector<Layer>& previous, const std::vector<Layer>& current,
-               float progress, std::uint64_t revision, AssetTier tier);
+               float progress, std::uint64_t revision, AssetTier tier, const std::string& mask = {});
     void shake(const ShakeFrame& frame,std::uint64_t serial);
     void clear_cache();
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:
     void cleanup();
-    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {}, GLuint overlay = 0, std::array<float,4> overlay_map = {});
+    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {}, GLuint overlay = 0, std::array<float,4> overlay_map = {}, std::array<int,3> hsv = {}, GLuint old = 0, GLuint mask = 0, float phase = 0);
     void opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier);
     struct Target {
         GLuint framebuffer{}, texture{};
@@ -66,6 +66,7 @@ private:
     GLuint program_{}, vao_{}, vbo_{};
     GLint rect_uniform_{}, color_uniform_{}, flip_uniform_{}, uv_uniform_{};
     GLint screen_uniform_{},screen_map_uniform_{};
+    GLint hsv_uniform_{},hsv_enabled_{},transition_uniform_{},phase_uniform_{};
     GLint overlay_uniform_{},overlay_map_uniform_{};
     int max_texture_size_{};
     Texture white_;

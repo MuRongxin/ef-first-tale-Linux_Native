@@ -1,4 +1,5 @@
 #include "render/renderer.hpp"
+#include "scene/color_filter.hpp"
 #include <SDL3/SDL_video.h>
 #include <algorithm>
 #include <cmath>
@@ -146,6 +147,12 @@ void main() {
 in vec2 uv;
 uniform sampler2D image;
 uniform vec4 color;
+uniform ivec4 hsv_matrix;
+uniform int hsv_enabled;
+uniform sampler2D old_image;
+uniform sampler2D mask_image;
+uniform int transition_enabled;
+uniform float mask_phase;
 uniform sampler2D overlay_image;
 uniform int overlay_enabled;
 uniform vec4 overlay_map;
@@ -155,6 +162,20 @@ uniform vec4 screen_map;
 out vec4 output_color;
 void main() {
     vec4 source = texture(image, uv);
+    if (transition_enabled != 0) {
+        vec3 old=floor(texture(old_image,uv).rgb*255.0+0.5);
+        vec3 next=floor(source.rgb*255.0+0.5);
+        // The native mask loader inverts RGB before the transition reads its blue byte.
+        float mask=255.0-floor(texture(mask_image,vec2(uv.x,1.0-uv.y)).b*255.0+0.5);
+        float amount=clamp(mask+mask_phase-256.0,0.0,255.0);
+        output_color=vec4((old+floor((next-old)*amount/256.0))/255.0,1);
+        return;
+    }
+    if (hsv_enabled!=0 && source.a>0.0) {
+        ivec3 a=ivec3(floor(clamp(source.rgb,0.0,1.0)*255.0+0.5));
+        int luma_term=a.r*hsv_matrix.x+a.g*hsv_matrix.y+a.b*hsv_matrix.z;
+        source.rgb=vec3(clamp((a*hsv_matrix.w+ivec3(luma_term))>>16,ivec3(0),ivec3(255)))/255.0;
+    }
     if (overlay_enabled != 0) {
         float row=(uv.y*overlay_map.y+overlay_map.z)*overlay_map.w;
         vec3 a=floor(clamp(source.rgb,0.0,1.0)*255.0+0.5);
@@ -193,6 +214,10 @@ void main() {
         uv_uniform_ = glGetUniformLocation(program_, "uv_rect");
         screen_uniform_=glGetUniformLocation(program_,"screen_enabled");
         screen_map_uniform_=glGetUniformLocation(program_,"screen_map");
+        hsv_uniform_=glGetUniformLocation(program_,"hsv_matrix");
+        hsv_enabled_=glGetUniformLocation(program_,"hsv_enabled");
+        transition_uniform_=glGetUniformLocation(program_,"transition_enabled");
+        phase_uniform_=glGetUniformLocation(program_,"mask_phase");
         overlay_uniform_=glGetUniformLocation(program_,"overlay_enabled");
         overlay_map_uniform_=glGetUniformLocation(program_,"overlay_map");
         constexpr float vertices[] = {0,0, 1,0, 0,1, 0,1, 1,0, 1,1};
@@ -207,6 +232,8 @@ void main() {
         glUniform1i(glGetUniformLocation(program_, "image"), 0);
         glUniform1i(glGetUniformLocation(program_, "screen_image"), 1);
         glUniform1i(glGetUniformLocation(program_, "overlay_image"), 2);
+        glUniform1i(glGetUniformLocation(program_, "old_image"), 3);
+        glUniform1i(glGetUniformLocation(program_, "mask_image"), 4);
         white_ = Texture(Image{1, 1, {255, 255, 255, 255}});
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -238,7 +265,7 @@ void Renderer::begin(int width, int height, Viewport view, Color background) {
 void Renderer::quad(const Texture& texture, float x, float y, float w, float h, Color color) {
     quad_id(texture.id(), x, y, w, h, color, false);
 }
-void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map) {
+void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map, std::array<int,3> hsv, GLuint old, GLuint mask, float phase) {
     glUseProgram(program_);
     glBindVertexArray(vao_);
     glActiveTexture(GL_TEXTURE0);
@@ -254,6 +281,15 @@ void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color
         glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D,overlay);
         glUniform4fv(overlay_map_uniform_,1,overlay_map.data());
         glActiveTexture(GL_TEXTURE0);
+    }
+    glUniform1i(hsv_enabled_,hsv!=std::array<int,3>{} ? 1 : 0);
+    const auto matrix=color_filter_coefficients(hsv);
+    glUniform4iv(hsv_uniform_,1,matrix.data());
+    glUniform1i(transition_uniform_,mask ? 1 : 0);
+    if (mask) {
+        glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D,old);
+        glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D,mask);
+        glActiveTexture(GL_TEXTURE0); glUniform1f(phase_uniform_,phase);
     }
     glUniform4f(rect_uniform_, x, y, w, h);
     glUniform4fv(color_uniform_, 1, color.data());
@@ -288,7 +324,7 @@ void Renderer::opaque_scene(const Content& content, const std::vector<Layer>& la
     }
 }
 void Renderer::stage(const Content& content, const std::vector<Layer>& previous, const std::vector<Layer>& current,
-                     float progress, std::uint64_t revision, AssetTier tier) {
+                     float progress, std::uint64_t revision, AssetTier tier, const std::string& mask) {
     if (!std::isfinite(progress)) throw std::runtime_error("Stage progress must be finite");
     checked_gl("Before stage composite");
     StageState state;
@@ -321,6 +357,13 @@ void Renderer::stage(const Content& content, const std::vector<Layer>& previous,
     }
     render(current_target_,current);
     state.target();
+    if (!mask.empty()) {
+        const auto mask_id=texture(content,mask,tier).texture.id();
+        glDisable(GL_BLEND);
+        quad_id(current_target_.texture,0,0,800,600,{1,1,1,1},true,{0,0,1,1},0,{},0,{}, {},previous_target_.texture,mask_id,std::floor(progress*512+0.0001f));
+        checked_gl("Masked scene transition");
+        return;
+    }
     // Both textures are opaque complete scenes; only the new scene's mix alpha
     // changes. Sampling an FBO needs the opposite Y direction from source PNGs.
     glDisable(GL_BLEND);
@@ -405,7 +448,7 @@ void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
             throw std::runtime_error("Image atlas region outside design canvas");
         uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
     }
-    quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map);
+    quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map,layer.hsv);
 }
 void Renderer::shake(const ShakeFrame& frame,std::uint64_t serial) {
     if (!std::isfinite(frame.x) || !std::isfinite(frame.y) || !std::isfinite(frame.crop) ||

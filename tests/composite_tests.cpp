@@ -95,9 +95,11 @@ int main() {
         png(temp.path/"old8.png",16,{0,0,255,128},{255,0,0,128});
         png(temp.path/"new4.png",8,{255,255,255,128},{255,0,255,128});
         png(temp.path/"new8.png",16,{0,255,255,128},{255,255,255,128});
+        png(temp.path/"mask4.png",8,{0,0,0,255},{255,255,255,255});
+        png(temp.path/"mask8.png",16,{0,0,0,255},{255,255,255,255});
         nlohmann::json manifest{{"version",1},{"design_size",{800,600}},{"entry_scene","unused.scene.json"},
             {"font",{{"path","unused.ttf"}}},{"images",nlohmann::json::object()}};
-        for (const std::string id : {"old","new"}) manifest["images"][id] = {{"design_size",{2,2}},{"variants",{
+        for (const std::string id : {"old","new","mask"}) manifest["images"][id] = {{"design_size",{2,2}},{"variants",{
             {"4",{{"path",id+"4.png"},{"pixels",{8,8}}}}, {"8",{{"path",id+"8.png"},{"pixels",{16,16}}}}}}};
         std::ofstream(temp.path/"manifest.json") << manifest.dump();
         Content content(temp.path);
@@ -197,6 +199,26 @@ int main() {
         renderer.begin(window_width,window_height,view,{1,1,1,1});
         renderer.stage(content,previous,{},1,6,AssetTier::x4);
         near(read(view,600,150),{0,0,0,255},0);
+        const Pixel old_pixel{240,100,10,255},new_pixel{20,200,250,255};
+        previous={rectangle({240/255.0f,100/255.0f,10/255.0f,1})};
+        current={rectangle({20/255.0f,200/255.0f,250/255.0f,1})};
+        for (const auto tier : {AssetTier::x4,AssetTier::x8}) for (const Viewport area : {Viewport{0,0,800,600},Viewport{0,0,1200,900},Viewport{100,100,800,600}}) {
+            for (const int phase : {0,128,256,384,511,512}) {
+                renderer.begin(window_width,window_height,area,{0,0,0,1});
+                renderer.stage(content,previous,current,static_cast<float>(phase)/512,123,tier,"mask");
+                for (const int y : {100,500}) {
+                    Pixel expected=old_pixel;
+                    const int mask=y<300 ? 255 : 0; // Native loader inverts the source mask.
+                    const int amount=std::clamp(mask+phase-256,0,255);
+                    for (std::size_t c=0;c<3;++c) expected[c]=phase==512 ? new_pixel[c] : static_cast<unsigned char>(static_cast<int>(old_pixel[c])+static_cast<int>(std::floor((static_cast<int>(new_pixel[c])-old_pixel[c])*amount/256.0)));
+                    near(read(area,100,y),expected,0);
+                }
+            }
+            renderer.clear_cache();
+        }
+        renderer.begin(window_width,window_height,view,{0,0,0,1});
+        renderer.stage(content,previous,current,.5f,124,AssetTier::x4,"mask");
+        renderer.rectangle(rectangle({1,1,1,1}));near(read(view,100,100),{255,255,255,255},0);
         require(glGetError()==GL_NO_ERROR,"Compositor cleanup left a GL error");
         std::cout << "Composite tests PASS: whole-scene alpha lerp, opaque output, image Y orientation, bars, snapshot keys, resize, live current scene, cache invalidation, GL state/exception restoration and budget limits\n";
         return 0;

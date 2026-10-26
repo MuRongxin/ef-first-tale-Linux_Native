@@ -49,7 +49,7 @@ void Presentation::voice(const std::string& name, bool r18) { play(AudioChannel:
 void Presentation::message(const Message& value) { voice(value.voice, value.script.starts_with("r18_scr/")); }
 float Presentation::progress() const {
     if (!fading_) return 1;
-    return static_cast<float>(std::min(1.0, std::floor(elapsed_*100) * speed_ / 2560.0));
+    return static_cast<float>(std::min(1.0, std::floor(elapsed_*100+1e-9) * active_speed_ / (active_type_==1 ? 5120.0 : 2560.0)));
 }
 bool Presentation::busy() const { return shaking() || fading_ || (wait_scroll_ && scroll_.has_value()); }
 void Presentation::update(double seconds) {
@@ -85,11 +85,23 @@ bool Presentation::command(const Instruction& instruction) {
         for (std::size_t n=0; n<args.size(); ++n)
             if (!args[n].empty() && args[n]!="*") next[first+n]=image(args[n],r18).asset;
         (cmd==".screen" ? screens_ : overlays_)=std::move(next); // Filters update pending state only.
+    } else if (cmd == ".HSVfilter") {
+        count(instruction,6,6);
+        std::array<std::array<int,3>,2> next;
+        for (std::size_t n=0;n<6;++n) next[n/3][n%3]=std::clamp(number(args[n]),n%3==0 ? -180 : -100,n%3==0 ? 180 : 100);
+        hsv_=next;
     } else if (cmd == ".transition") {
         count(instruction,3,3);
-        if (number(args[0]) != 0 || args[1] != "*" || number(args[2]) <= 0)
-            throw std::runtime_error("Only unmasked type-0 crossfade with positive speed is implemented");
-        speed_ = number(args[2]);
+        const int type=number(args[0]),speed=number(args[2]);
+        if (speed<=0 || (type!=0 && type!=1) || (type==0 && args[1]!="*") || (type==1 && (args[1]=="*" || speed>255)))
+            throw std::runtime_error("Unsupported transition type, mask or speed");
+        std::string mask;
+        if (type==1) {
+            mask=image(args[1],r18).asset;
+            const auto& asset=content_.asset(mask);
+            if (asset.width!=800 || asset.height!=600) throw std::runtime_error("Transition mask must use the 800x600 design canvas");
+        }
+        speed_=speed; transition_type_=type; transition_mask_=std::move(mask);
     } else if (cmd == ".stage") {
         count(instruction,4,26);
         std::vector<Layer> next;
@@ -103,7 +115,7 @@ bool Presentation::command(const Instruction& instruction) {
         std::optional<std::size_t> background;
         if (args[cursor] != "*") {
             auto layer = image(args[cursor],r18);
-            layer.screen=screens_[1]; layer.overlay=overlays_[1];
+            layer.screen=screens_[1]; layer.overlay=overlays_[1]; layer.hsv=hsv_[0];
             layer.x = -std::clamp(static_cast<float>(number(args[cursor+1])),0.0f,std::max(0.0f,layer.width-800));
             layer.y = -std::clamp(static_cast<float>(number(args[cursor+2])),0.0f,std::max(0.0f,layer.height-600));
             background = next.size(); next.push_back(std::move(layer));
@@ -112,7 +124,7 @@ bool Presentation::command(const Instruction& instruction) {
             const int center = number(args[cursor+1]); // annotated placement flags deliberately rejected
             if (args[cursor] == "*") continue;
             auto layer = image(args[cursor],r18);
-            layer.screen=screens_[2]; layer.overlay=overlays_[2];
+            layer.screen=screens_[2]; layer.overlay=overlays_[2]; layer.hsv=hsv_[1];
             layer.x = static_cast<float>(center)-layer.width/2; layer.y = 600-layer.height;
             next.push_back(std::move(layer));
         }
@@ -124,7 +136,8 @@ bool Presentation::command(const Instruction& instruction) {
         }
         previous_ = std::move(current_); current_ = std::move(next); background_ = background;
         scroll_.reset(); wait_scroll_ = false;
-        ++revision_; elapsed_ = 0; fading_ = speed_ <= 255;
+        active_type_=transition_type_; active_speed_=speed_; active_mask_=transition_mask_;
+        ++revision_; elapsed_ = 0; fading_ = active_speed_ <= 255;
         if (!fading_) previous_.clear();
     } else if (cmd == ".vscroll" || cmd == ".hscroll" || cmd == ".scroll") {
         count(instruction,cmd == ".scroll" ? 3 : 2,cmd == ".scroll" ? 3 : 2);

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <bit>
 namespace {
 using Pixel=std::array<unsigned char,4>;
 constexpr int ww=1200,wh=900;
@@ -18,6 +19,31 @@ unsigned char overlay(unsigned a,unsigned b) {
     return static_cast<unsigned char>(a<128 ? std::min(255U,2*((a*b+255)/256)) : 255-std::min(255U,2*(((255-a)*(255-b)+255)/256)));
 }
 Pixel overlaid(Pixel a,Pixel b) { for (int c=0;c<3;++c) a[static_cast<std::size_t>(c)]=overlay(a[static_cast<std::size_t>(c)],b[static_cast<std::size_t>(c)]); return a; }
+Pixel hsv(Pixel pixel,std::array<int,3> values) {
+    const int s=(std::clamp(values[1],-100,100)+100)*65536/100;
+    const int inv=65536-s, v=std::clamp(values[2],-100,100)*256;
+    const auto weight=[&](int n) { return (std::bit_cast<std::int32_t>(static_cast<std::uint32_t>(static_cast<std::int64_t>(inv)*n))>>16)+v; };
+    // Independent six lookup tables follow the shipped per-channel accumulation routine.
+    static std::array<std::array<int,256>,6> table{};
+    static std::array<int,3> previous{999,999,999};
+    if (previous!=values) {
+    previous=values;
+    for (int n=0;n<256;++n) {
+        table[0][static_cast<std::size_t>(n)]=n*(weight(19595)+s);
+        table[1][static_cast<std::size_t>(n)]=n*weight(19595);
+        table[2][static_cast<std::size_t>(n)]=n*(weight(38470)+s);
+        table[3][static_cast<std::size_t>(n)]=n*weight(38470);
+        table[4][static_cast<std::size_t>(n)]=n*(weight(7471)+s);
+        table[5][static_cast<std::size_t>(n)]=n*weight(7471);
+    }
+    }
+    if (pixel[3]==0) return pixel;
+    const auto r=pixel[0],g=pixel[1],b=pixel[2];
+    pixel[0]=static_cast<unsigned char>(std::clamp((table[0][r]+table[3][g]+table[5][b])>>16,0,255));
+    pixel[1]=static_cast<unsigned char>(std::clamp((table[1][r]+table[2][g]+table[5][b])>>16,0,255));
+    pixel[2]=static_cast<unsigned char>(std::clamp((table[1][r]+table[3][g]+table[4][b])>>16,0,255));
+    return pixel;
+}
 Pixel filtered(Pixel a,Pixel b) { for (int c=0; c<3; ++c) a[static_cast<std::size_t>(c)]=screen(a[static_cast<std::size_t>(c)],b[static_cast<std::size_t>(c)]); return a; }
 struct Temporary {
     std::filesystem::path path=std::filesystem::current_path()/("test-screen-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -67,6 +93,7 @@ int main() {
         for (int height : {611,621}) add("band"+std::to_string(height),1,height,[&](int,int y) { return y<height-600 ? Pixel{255,0,0,255} : middle; });
         add("large1",900,601,[&](int,int) { return middle; });
         add("large2",900,601,[&](int,int) { return bottom; });
+        add("colors",256,256,[](int x,int y) { return Pixel{static_cast<unsigned char>(x),static_cast<unsigned char>(y),static_cast<unsigned char>((x*7+y*13)&255),255}; });
         add("matrix",256,256,[](int x,int) { const auto n=static_cast<unsigned char>(x); return Pixel{n,n,n,255}; });
         add("ramp",1,256,[](int,int y) { const auto n=static_cast<unsigned char>(y); return Pixel{n,n,n,255}; });
         std::ofstream(temp.path/"manifest.json")<<manifest.dump(); Content content(temp.path);
@@ -88,7 +115,18 @@ int main() {
             require(matrix[offset]==overlay(x,y) && matrix[offset+1]==overlay(x,y) && matrix[offset+2]==overlay(x,y) && matrix[offset+3]==255,
                 "GPU overlay formula differs from native byte formula");
         }
-        layer.overlay.clear();
+        layer.overlay.clear(); layer.asset="colors";
+        for (const auto values : {std::array<int,3>{0,-25,-8},{0,5,-5},{5,-5,0},{42,0,0},{0,-100,100},{0,100,-100}}) {
+            layer.hsv=values;
+            renderer.begin(ww,wh,view,{0,0,0,1});renderer.image(content,layer,AssetTier::x4);
+            glReadPixels(0,wh-256,256,256,GL_RGBA,GL_UNSIGNED_BYTE,matrix.data());
+            for (unsigned y=0;y<256;++y) for (unsigned x=0;x<256;++x) {
+                const auto expected=hsv({static_cast<unsigned char>(x),static_cast<unsigned char>(y),static_cast<unsigned char>((x*7+y*13)&255),255},values);
+                const auto offset=((255-y)*256+x)*4;
+                for (std::size_t c=0;c<4;++c) require(matrix[offset+c]==expected[c],"GPU HSV differs from native fixed-point lookup tables");
+            }
+        }
+        layer.hsv={};
         for (auto tier : {AssetTier::x4,AssetTier::x8}) for (bool enlarged : {false,true}) {
             view=enlarged ? Viewport{0,0,1200,900} : Viewport{0,0,800,600};
             layer.asset="source"; layer.screen="band"; layer.x=layer.y=0; layer.width=800; layer.height=600;
@@ -105,15 +143,17 @@ int main() {
             layer.asset="clear"; layer.height=600; draw(); near(read(view,100,100),{0,0,0,255});
             layer.asset="source"; layer.height=600; layer.screen="band"; layer.overlay="band611"; draw();
             near(read(view,100,100),filtered(overlaid(source,middle),middle));
+            layer.hsv={0,-25,-8}; draw();
+            near(read(view,100,100),filtered(overlaid(hsv(source,layer.hsv),middle),middle));
             layer.asset="alpha"; layer.height=200; draw();
-            expected=filtered(overlaid(source,middle),bottom);
+            expected=filtered(overlaid(hsv(source,layer.hsv),middle),bottom);
             for (int c=0;c<3;++c) expected[static_cast<std::size_t>(c)]=static_cast<unsigned char>(expected[static_cast<std::size_t>(c)]*128/255);
             near(read(view,100,100),expected);
             layer.asset="clear";layer.height=600;draw();near(read(view,100,100),{0,0,0,255});
             // A following UI rectangle must not inherit the strip sampler or filter uniform.
             Layer ui; ui.kind=LayerKind::rectangle; ui.width=ui.height=200; ui.color={1,1,1,1}; renderer.rectangle(ui);
             near(read(view,100,100),{255,255,255,255});
-            layer.overlay.clear();
+            layer.overlay.clear(); layer.hsv={};
         }
         layer.asset="source"; layer.screen="band"; layer.height=600; layer.y=0;
         const auto old=layer; layer.screen.clear();
