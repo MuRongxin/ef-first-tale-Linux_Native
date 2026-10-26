@@ -21,9 +21,9 @@ int main() {
         nlohmann::json manifest{{"version",1},{"design_size",{800,600}},{"entry_scene","unused.json"},{"font",{{"path","unused.ttf"}}},
             {"development",true},{"resources","catalog.json"},{"images",nlohmann::json::object()}};
         nlohmann::json catalog{{"version",1},{"entries",nlohmann::json::object()}};
-        for (const auto* name : {"wide.png","actor.png","frame.png","mask.png","finder.png","batFull.png","batMid.png","batLow.png","batZero.png"}) {
+        for (const auto* name : {"wide.png","actor.png","odd.png","frame.png","mask.png","finder.png","batFull.png","batMid.png","batLow.png","batZero.png"}) {
             const std::string id = std::string("bg/")+name;
-            const auto size = std::string(name)=="wide.png" ? nlohmann::json{1600,1800} : (std::string(name)=="mask.png" || std::string(name)=="finder.png") ? nlohmann::json{800,600} : std::string(name).starts_with("bat") ? nlohmann::json{59,35} : nlohmann::json{200,600};
+            const auto size = std::string(name)=="wide.png" ? nlohmann::json{1600,1800} : std::string(name)=="odd.png" ? nlohmann::json{389,574} : (std::string(name)=="mask.png" || std::string(name)=="finder.png") ? nlohmann::json{800,600} : std::string(name).starts_with("bat") ? nlohmann::json{59,35} : nlohmann::json{200,600};
             manifest["images"][id] = {{"source_sha256",std::string(64,'a')},{"design_size",size},{"variants",{{"1",{{"path","unused.png"},{"pixels",size}}}}}};
             catalog["entries"][id] = {{"kind","image"},{"name",name},{"tag","bg"},{"source_sha256",std::string(64,'a')}};
         }
@@ -106,6 +106,18 @@ int main() {
         command(".stage * wide.png 200 100 actor.png 400\n");
         require(stage.current().size()==2 && stage.current()[0].x==-200 && stage.current()[0].y==-100,"background crop");
         require(stage.current()[1].x==300 && stage.current()[1].y==0,"center/bottom foreground");
+        command(".stage * wide.png 0 0 actor.png 600,75 odd.png 400,75\n");
+        auto trimmed=stage.current();
+        require(trimmed[1].x==500 && trimmed[1].y==75 && trimmed[1].height==525 && trimmed[1].width==200 && trimmed[1].trim_bottom==75,"Comma placement must crop bottom pixels then bottom-align without scaling");
+        require(trimmed[2].x==206 && trimmed[2].y==101 && trimmed[2].height==499,"Odd-width foreground must use native integer half-width");
+        command(".stage * wide.png 0 0 actor.png 100,0 actor.png 300,-75 actor.png 500,599\n");
+        require(stage.current()[1].y==0 && stage.current()[2].trim_bottom==0 && stage.current()[3].height==1 && stage.current()[3].y==599,"Zero/negative trim and last-row boundary");
+        const auto trim_revision=stage.revision();
+        for (const std::string token : {"400,600","400,601",",75","400,","400,75,1","400,word","400,2147483648"})
+            rejects([&] { command(".stage * wide.png 0 0 actor.png "+token+"\n"); });
+        require(stage.revision()==trim_revision && stage.current()[3].height==1,"Invalid comma placement must leave current stage intact");
+        command(".stage * wide.png 0 0 actor.png 400\n");
+        require(stage.current()[1].trim_bottom==0 && stage.current()[1].height==600,"Trim must not mutate the cached asset or persist into an unannotated stage");
         command(".transition 0 * 10\n");
         command(".stage * wide.png 0 0\n");
         require(stage.busy() && stage.progress()==0 && stage.previous().size()==2,"stage blocks during transition");

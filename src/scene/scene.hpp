@@ -17,6 +17,7 @@ struct Layer {
     std::string asset, text, slot;
     std::string screen, overlay; // RGB strip applied in source-image coordinates before composition
     std::array<int,3> hsv{};
+    int trim_bottom{}; // Native stage preprocessing crops design pixels before material filtering.
     float x{}, y{}, width{}, height{}, font_size{24};
     Color color{1, 1, 1, 1};
     TextAppearance appearance;

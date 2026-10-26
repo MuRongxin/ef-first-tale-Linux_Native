@@ -87,6 +87,8 @@ int main() {
         const Pixel source{80,120,160,255},top{10,20,30,255},middle{40,80,120,255},bottom{200,100,20,255};
         add("source",2,600,[&](int,int) { return source; });
         add("tall",2,1200,[&](int,int) { return source; });
+        add("trim_source",2,600,[](int,int y) { return y<525 ? Pixel{80,120,160,128} : Pixel{255,0,0,255}; });
+        add("trim_band",1,601,[](int,int y) { return y<50 ? Pixel{10,20,30,255} : Pixel{200,100,20,255}; });
         add("alpha",2,200,[&](int,int) { return Pixel{80,120,160,128}; });
         add("clear",2,600,[](int,int) { return Pixel{255,255,255,0}; });
         add("band",1,601,[&](int,int y) { return y==0 ? top : y<301 ? middle : bottom; });
@@ -135,6 +137,19 @@ int main() {
             for (int height : {611,621}) {
                 layer.screen="band"+std::to_string(height); draw(); near(read(view,100,2),filtered(source,middle));
             }
+            // Cropping precedes filtering: at source y=10 the strip row is 601-525+10=86.
+            layer.asset="trim_source";layer.trim_bottom=75;layer.width=800;layer.height=525;layer.y=75;
+            layer.screen="trim_band";layer.overlay="trim_band";layer.hsv={0,-25,-8};draw();
+            auto trim_expected=filtered(overlaid(hsv(Pixel{80,120,160,128},layer.hsv),bottom),bottom);
+            for (std::size_t c=0;c<3;++c) trim_expected[c]=static_cast<unsigned char>(trim_expected[c]*128/255);
+            trim_expected[3]=255; // Stage snapshots are opaque after composing the source alpha.
+            near(read(view,100,85),trim_expected);near(read(view,100,30),{0,0,0,255});
+            layer.screen.clear();layer.overlay.clear();layer.hsv={};draw();
+            near(read(view,100,590),{40,60,80,255}); // Full-width, no red cropped tail and no vertical rescale.
+            Pixel last_row{};glReadPixels(view.x+100*view.width/800,wh-view.y-view.height,1,1,GL_RGBA,GL_UNSIGNED_BYTE,last_row.data());
+            near(last_row,{40,60,80,255}); // Linear sampling may not bleed the removed red row at 1.5x.
+            layer.trim_bottom=0;layer.y=0;layer.height=600;draw();near(read(view,100,590),{255,0,0,255});
+            layer.screen="band";
             layer.asset="tall"; layer.screen="band"; layer.height=1200; layer.y=0; draw(); near(read(view,100,100),filtered(source,top));
             layer.y=-600; draw(); near(read(view,100,100),filtered(source,middle)); near(read(view,100,500),filtered(source,bottom));
             layer.asset="alpha"; layer.height=200; layer.y=0; draw();

@@ -4,6 +4,7 @@
 #include <charconv>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace ef {
 namespace {
@@ -12,6 +13,11 @@ int number(const std::string& value) {
     const auto parsed = std::from_chars(value.data(), value.data()+value.size(), result);
     if (parsed.ec != std::errc{} || parsed.ptr != value.data()+value.size()) throw std::runtime_error("Expected integer: " + value);
     return result;
+}
+std::pair<int,int> placement(const std::string& value) {
+    const auto comma=value.find(',');
+    if (comma==std::string::npos) return {number(value),0};
+    return {number(value.substr(0,comma)),std::max(0,number(value.substr(comma+1)))};
 }
 bool numeric(const std::string& value) {
     try { (void)number(value); return true; } catch (const std::exception&) { return false; }
@@ -197,11 +203,13 @@ bool Presentation::command(const Instruction& instruction) {
             background = next.size(); next.push_back(std::move(layer));
         } else { (void)number(args[cursor+1]); (void)number(args[cursor+2]); }
         for (cursor += 3; cursor < args.size(); cursor += 2) {
-            const int center = number(args[cursor+1]); // annotated placement flags deliberately rejected
+            const auto [center,trim] = placement(args[cursor+1]);
             if (args[cursor] == "*") continue;
             auto layer = image(args[cursor],r18);
             layer.part=StagePart::foreground; layer.screen=screens_[2]; layer.overlay=overlays_[2]; layer.hsv=hsv_[1];
-            layer.x = static_cast<float>(center)-layer.width/2; layer.y = 600-layer.height;
+            if (trim>=layer.height) throw std::runtime_error("Stage bottom trim must leave a positive image height");
+            layer.trim_bottom=trim;layer.height-=static_cast<float>(trim);
+            layer.x = static_cast<float>(center)-std::floor(layer.width/2); layer.y = 600-layer.height;
             next.push_back(std::move(layer));
         }
         if (args[0] != "*") {

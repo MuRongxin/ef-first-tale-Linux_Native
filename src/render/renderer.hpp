@@ -45,7 +45,7 @@ public:
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:
     void cleanup();
-    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {}, GLuint overlay = 0, std::array<float,4> overlay_map = {}, std::array<int,3> hsv = {}, GLuint old = 0, GLuint mask = 0, float phase = 0,int transition_type = 0,std::array<int,4> region = {});
+    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {}, GLuint overlay = 0, std::array<float,4> overlay_map = {}, std::array<int,3> hsv = {}, GLuint old = 0, GLuint mask = 0, float phase = 0,int transition_type = 0,std::array<int,4> region = {}, float bottom_limit = 0);
     void opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier, const std::function<void(const Layer&)>& text);
     struct Target {
         GLuint framebuffer{}, texture{};
@@ -67,7 +67,7 @@ private:
     // Keep both 4x walking panoramas and an 8x frame resident together.
     static constexpr std::size_t budget_ = 512ULL * 1024 * 1024;
     GLuint program_{}, vao_{}, vbo_{};
-    GLint rect_uniform_{}, color_uniform_{}, flip_uniform_{}, uv_uniform_{};
+    GLint rect_uniform_{}, color_uniform_{}, flip_uniform_{}, uv_uniform_{},bottom_uniform_{};
     GLint screen_uniform_{},screen_map_uniform_{};
     GLint hsv_uniform_{},hsv_enabled_{},transition_uniform_{},phase_uniform_{},region_uniform_{};
     GLint overlay_uniform_{},overlay_map_uniform_{};

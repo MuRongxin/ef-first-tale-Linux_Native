@@ -147,6 +147,7 @@ void main() {
         constexpr const char* fragment_source = R"(#version 330 core
 in vec2 uv;
 uniform sampler2D image;
+uniform float bottom_limit;
 uniform vec4 color;
 uniform ivec4 hsv_matrix;
 uniform int hsv_enabled;
@@ -163,7 +164,9 @@ uniform int screen_enabled;
 uniform vec4 screen_map;
 out vec4 output_color;
 void main() {
-    vec4 source = texture(image, uv);
+    vec2 sample_uv=uv;
+    if (bottom_limit>0.0) sample_uv.y=min(sample_uv.y,bottom_limit-0.5/float(textureSize(image,0).y));
+    vec4 source = texture(image,sample_uv);
     if (transition_enabled==2) {
         ivec2 pixels=textureSize(image,0);
         vec2 point=floor(vec2(uv.x,1.0-uv.y)*vec2(pixels));
@@ -204,7 +207,7 @@ void main() {
         source.rgb=vec3(clamp((a*hsv_matrix.w+ivec3(luma_term))>>16,ivec3(0),ivec3(255)))/255.0;
     }
     if (overlay_enabled != 0) {
-        float row=(uv.y*overlay_map.y+overlay_map.z)*overlay_map.w;
+        float row=(sample_uv.y*overlay_map.y+overlay_map.z)*overlay_map.w;
         vec3 a=floor(clamp(source.rgb,0.0,1.0)*255.0+0.5);
         vec3 b=floor(clamp(texture(overlay_image,vec2(overlay_map.x,row)).rgb,0.0,1.0)*255.0+0.5);
         vec3 low=min(vec3(255),2.0*floor((a*b+255.0)/256.0));
@@ -213,7 +216,7 @@ void main() {
     }
     if (screen_enabled != 0) {
         // Strip and source share their bottom edge; CLAMP_TO_EDGE repeats the first row above it.
-        float row = (uv.y * screen_map.y + screen_map.z) * screen_map.w;
+        float row = (sample_uv.y * screen_map.y + screen_map.z) * screen_map.w;
         vec3 strip = texture(screen_image, vec2(screen_map.x, row)).rgb;
         vec3 a = floor(clamp(source.rgb, 0.0, 1.0) * 255.0 + 0.5);
         vec3 b = floor(clamp(strip, 0.0, 1.0) * 255.0 + 0.5);
@@ -239,6 +242,7 @@ void main() {
         color_uniform_ = glGetUniformLocation(program_, "color");
         flip_uniform_ = glGetUniformLocation(program_, "flip_y");
         uv_uniform_ = glGetUniformLocation(program_, "uv_rect");
+        bottom_uniform_=glGetUniformLocation(program_,"bottom_limit");
         screen_uniform_=glGetUniformLocation(program_,"screen_enabled");
         screen_map_uniform_=glGetUniformLocation(program_,"screen_map");
         hsv_uniform_=glGetUniformLocation(program_,"hsv_matrix");
@@ -294,11 +298,12 @@ void Renderer::begin(int width, int height, Viewport view, Color background) {
 void Renderer::quad(const Texture& texture, float x, float y, float w, float h, Color color) {
     quad_id(texture.id(), x, y, w, h, color, false);
 }
-void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map, std::array<int,3> hsv, GLuint old, GLuint mask, float phase,int transition_type,std::array<int,4> region) {
+void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map, std::array<int,3> hsv, GLuint old, GLuint mask, float phase,int transition_type,std::array<int,4> region,float bottom_limit) {
     glUseProgram(program_);
     glBindVertexArray(vao_);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
+    glUniform1f(bottom_uniform_,bottom_limit);
     glUniform1i(screen_uniform_,screen ? 1 : 0);
     if (screen) {
         glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D,screen);
@@ -496,14 +501,18 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
     throw std::runtime_error("No usable image variant for " + asset);
 }
 void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
+    const auto& design=content.asset(layer.asset);
+    if (layer.trim_bottom<0 || layer.trim_bottom>=design.height || (layer.trim_bottom && layer.source))
+        throw std::runtime_error("Invalid bottom trim or conflicting image atlas region");
     auto& primary=texture(content,layer.asset,tier);
+    const int material_height=design.height-layer.trim_bottom;
     GLuint screen{}; std::array<float,4> screen_map{};
     if (!layer.screen.empty()) {
         const auto& source=content.asset(layer.asset);
         const auto& strip=content.asset(layer.screen);
         screen=texture(content,layer.screen,tier,true).texture.id();
         screen_map={0.5f/static_cast<float>(strip.width),static_cast<float>(source.height),
-                    static_cast<float>(strip.height-source.height),1.0f/static_cast<float>(strip.height)};
+                    static_cast<float>(strip.height-material_height),1.0f/static_cast<float>(strip.height)};
     }
     GLuint overlay{}; std::array<float,4> overlay_map{};
     if (!layer.overlay.empty()) {
@@ -511,9 +520,9 @@ void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
         const auto& strip=content.asset(layer.overlay);
         overlay=texture(content,layer.overlay,tier,true,screen).texture.id();
         overlay_map={0.5f/static_cast<float>(strip.width),static_cast<float>(source.height),
-                    static_cast<float>(strip.height-source.height),1.0f/static_cast<float>(strip.height)};
+                    static_cast<float>(strip.height-material_height),1.0f/static_cast<float>(strip.height)};
     }
-    std::array<float,4> uv{0,0,1,1};
+    std::array<float,4> uv{0,0,1,static_cast<float>(material_height)/static_cast<float>(design.height)};
     if (layer.source) {
         const auto& asset = content.asset(layer.asset);
         const auto& source = *layer.source;
@@ -523,7 +532,7 @@ void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
             throw std::runtime_error("Image atlas region outside design canvas");
         uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
     }
-    quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map,layer.hsv);
+    quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map,layer.hsv,0,0,0,0,{},layer.trim_bottom ? static_cast<float>(material_height)/static_cast<float>(design.height) : 0);
 }
 void Renderer::shake(const ShakeFrame& frame,std::uint64_t serial) {
     if (!std::isfinite(frame.x) || !std::isfinite(frame.y) || !std::isfinite(frame.crop) ||
