@@ -3,6 +3,7 @@
 #include "data/content.hpp"
 #include "data/image.hpp"
 #include "scene/scene.hpp"
+#include "scene/shake.hpp"
 #include <GL/glew.h>
 #include <cstdint>
 #include <array>
@@ -37,11 +38,12 @@ public:
     // Text layers are ignored here; callers render text after the stage.
     void stage(const Content& content, const std::vector<Layer>& previous, const std::vector<Layer>& current,
                float progress, std::uint64_t revision, AssetTier tier);
+    void shake(const ShakeFrame& frame,std::uint64_t serial);
     void clear_cache();
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:
     void cleanup();
-    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {});
+    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {}, GLuint overlay = 0, std::array<float,4> overlay_map = {});
     void opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier);
     struct Target {
         GLuint framebuffer{}, texture{};
@@ -54,7 +56,7 @@ private:
         Target& operator=(const Target&) = delete;
     };
     struct Entry { Texture texture; std::size_t bytes{}; std::uint64_t used{}; };
-    Entry& texture(const Content& content,const std::string& asset,AssetTier tier,bool strip=false);
+    Entry& texture(const Content& content,const std::string& asset,AssetTier tier,bool strip=false,GLuint pinned=0);
     std::map<std::string, Entry> cache_,strips_;
     std::set<std::string> rejected_,strip_rejected_,reported_;
     std::size_t cache_bytes_{},strip_bytes_{};
@@ -64,9 +66,15 @@ private:
     GLuint program_{}, vao_{}, vbo_{};
     GLint rect_uniform_{}, color_uniform_{}, flip_uniform_{}, uv_uniform_{};
     GLint screen_uniform_{},screen_map_uniform_{};
+    GLint overlay_uniform_{},overlay_map_uniform_{};
     int max_texture_size_{};
     Texture white_;
     Target previous_target_, current_target_;
+    Target shake_source_,shake_history_,shake_next_;
+    GLuint shake_program_{};
+    std::uint64_t shake_serial_{},shake_sample_{~std::uint64_t{0}};
+    std::array<GLint,4> shake_view_{};
+    bool shake_valid_{};
     bool snapshot_valid_{};
     std::uint64_t snapshot_revision_{};
     AssetTier snapshot_tier_{AssetTier::x4};

@@ -146,12 +146,23 @@ void main() {
 in vec2 uv;
 uniform sampler2D image;
 uniform vec4 color;
+uniform sampler2D overlay_image;
+uniform int overlay_enabled;
+uniform vec4 overlay_map;
 uniform sampler2D screen_image;
 uniform int screen_enabled;
 uniform vec4 screen_map;
 out vec4 output_color;
 void main() {
     vec4 source = texture(image, uv);
+    if (overlay_enabled != 0) {
+        float row=(uv.y*overlay_map.y+overlay_map.z)*overlay_map.w;
+        vec3 a=floor(clamp(source.rgb,0.0,1.0)*255.0+0.5);
+        vec3 b=floor(clamp(texture(overlay_image,vec2(overlay_map.x,row)).rgb,0.0,1.0)*255.0+0.5);
+        vec3 low=min(vec3(255),2.0*floor((a*b+255.0)/256.0));
+        vec3 high=255.0-min(vec3(255),2.0*floor(((255.0-a)*(255.0-b)+255.0)/256.0));
+        source.rgb=mix(low,high,step(vec3(128),a))/255.0;
+    }
     if (screen_enabled != 0) {
         // Strip and source share their bottom edge; CLAMP_TO_EDGE repeats the first row above it.
         float row = (uv.y * screen_map.y + screen_map.z) * screen_map.w;
@@ -182,6 +193,8 @@ void main() {
         uv_uniform_ = glGetUniformLocation(program_, "uv_rect");
         screen_uniform_=glGetUniformLocation(program_,"screen_enabled");
         screen_map_uniform_=glGetUniformLocation(program_,"screen_map");
+        overlay_uniform_=glGetUniformLocation(program_,"overlay_enabled");
+        overlay_map_uniform_=glGetUniformLocation(program_,"overlay_map");
         constexpr float vertices[] = {0,0, 1,0, 0,1, 0,1, 1,0, 1,1};
         glGenVertexArrays(1, &vao_);
         glGenBuffers(1, &vbo_);
@@ -193,6 +206,7 @@ void main() {
         glUseProgram(program_);
         glUniform1i(glGetUniformLocation(program_, "image"), 0);
         glUniform1i(glGetUniformLocation(program_, "screen_image"), 1);
+        glUniform1i(glGetUniformLocation(program_, "overlay_image"), 2);
         white_ = Texture(Image{1, 1, {255, 255, 255, 255}});
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -200,6 +214,9 @@ void main() {
     } catch (...) { cleanup(); throw; }
 }
 void Renderer::cleanup() {
+    shake_source_.reset(); shake_history_.reset(); shake_next_.reset();
+    if (shake_program_) glDeleteProgram(shake_program_);
+    shake_program_=0;
     previous_target_.reset(); current_target_.reset();
     if (program_) glDeleteProgram(program_);
     if (vbo_) glDeleteBuffers(1, &vbo_);
@@ -221,7 +238,7 @@ void Renderer::begin(int width, int height, Viewport view, Color background) {
 void Renderer::quad(const Texture& texture, float x, float y, float w, float h, Color color) {
     quad_id(texture.id(), x, y, w, h, color, false);
 }
-void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map) {
+void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map) {
     glUseProgram(program_);
     glBindVertexArray(vao_);
     glActiveTexture(GL_TEXTURE0);
@@ -232,6 +249,12 @@ void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color
         glUniform4fv(screen_map_uniform_,1,screen_map.data());
         glActiveTexture(GL_TEXTURE0);
     }
+    glUniform1i(overlay_uniform_,overlay ? 1 : 0);
+    if (overlay) {
+        glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D,overlay);
+        glUniform4fv(overlay_map_uniform_,1,overlay_map.data());
+        glActiveTexture(GL_TEXTURE0);
+    }
     glUniform4f(rect_uniform_, x, y, w, h);
     glUniform4fv(color_uniform_, 1, color.data());
     glUniform1i(flip_uniform_, flip_y ? 1 : 0);
@@ -240,6 +263,8 @@ void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color
 }
 void Renderer::rectangle(const Layer& layer) { quad(white_, layer.x, layer.y, layer.width, layer.height, layer.color); }
 void Renderer::clear_cache() {
+    shake_valid_=false;
+    shake_source_.reset(); shake_history_.reset(); shake_next_.reset();
     cache_.clear(); strips_.clear();
     cache_bytes_ = strip_bytes_ = 0;
     rejected_.clear(); strip_rejected_.clear();
@@ -306,7 +331,7 @@ void Renderer::stage(const Content& content, const std::vector<Layer>& previous,
     quad_id(current_target_.texture,0,0,800,600,{1,1,1,std::clamp(progress,0.0f,1.0f)},true);
     checked_gl("Blend complete stage scenes");
 }
-Renderer::Entry& Renderer::texture(const Content& content,const std::string& asset,AssetTier tier,bool strip) {
+Renderer::Entry& Renderer::texture(const Content& content,const std::string& asset,AssetTier tier,bool strip,GLuint pinned) {
     auto& cache=strip ? strips_ : cache_;
     auto& rejected=strip ? strip_rejected_ : rejected_;
     auto& cache_bytes=strip ? strip_bytes_ : cache_bytes_;
@@ -316,6 +341,7 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
         if (rejected.contains(path)) continue;
         auto found = cache.find(path);
         if (found == cache.end()) {
+            bool capacity_conflict=false;
             try {
                 const auto bytes = static_cast<std::size_t>(candidate.width) * static_cast<std::size_t>(candidate.height) * 4;
                 if (candidate.width > max_texture_size_ || candidate.height > max_texture_size_ || bytes > budget)
@@ -324,14 +350,17 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
                 if (image.width != candidate.width || image.height != candidate.height)
                     throw std::runtime_error("Decoded dimensions do not match the content manifest");
                 while (cache_bytes + bytes > budget && !cache.empty()) {
-                    const auto victim = std::min_element(cache.begin(), cache.end(), [](const auto& a, const auto& b) { return a.second.used < b.second.used; });
+                    auto victim=cache.end();
+                    for (auto it=cache.begin();it!=cache.end();++it)
+                        if (it->second.texture.id()!=pinned && (victim==cache.end() || it->second.used<victim->second.used)) victim=it;
+                    if (victim==cache.end()) { capacity_conflict=true; throw std::runtime_error("Combined filter images exceed strip cache budget"); }
                     cache_bytes -= victim->second.bytes;
                     cache.erase(victim);
                 }
                 found = cache.emplace(path, Entry{Texture(image), bytes, ++clock_}).first;
                 cache_bytes += bytes;
             } catch (const std::exception& e) {
-                rejected.insert(path);
+                if (!capacity_conflict) rejected.insert(path);
                 std::cerr << "[asset fallback] " << path << ": " << e.what() << '\n';
                 continue;
             }
@@ -358,6 +387,14 @@ void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
         screen_map={0.5f/static_cast<float>(strip.width),static_cast<float>(source.height),
                     static_cast<float>(strip.height-source.height),1.0f/static_cast<float>(strip.height)};
     }
+    GLuint overlay{}; std::array<float,4> overlay_map{};
+    if (!layer.overlay.empty()) {
+        const auto& source=content.asset(layer.asset);
+        const auto& strip=content.asset(layer.overlay);
+        overlay=texture(content,layer.overlay,tier,true,screen).texture.id();
+        overlay_map={0.5f/static_cast<float>(strip.width),static_cast<float>(source.height),
+                    static_cast<float>(strip.height-source.height),1.0f/static_cast<float>(strip.height)};
+    }
     std::array<float,4> uv{0,0,1,1};
     if (layer.source) {
         const auto& asset = content.asset(layer.asset);
@@ -368,8 +405,111 @@ void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
             throw std::runtime_error("Image atlas region outside design canvas");
         uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
     }
-    quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map);
+    quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map);
 }
+void Renderer::shake(const ShakeFrame& frame,std::uint64_t serial) {
+    if (!std::isfinite(frame.x) || !std::isfinite(frame.y) || !std::isfinite(frame.crop) ||
+        !std::isfinite(frame.angle) || frame.crop<0 || frame.crop>=300)
+        throw std::runtime_error("Invalid shake frame");
+    StageState state;
+    const int w=state.viewport[2],h=state.viewport[3];
+    if (w<=0 || h<=0) return;
+    if (w>max_texture_size_ || h>max_texture_size_ || static_cast<std::uint64_t>(w)*static_cast<std::uint64_t>(h)*12>composite_budget_)
+        throw std::runtime_error("Shake framebuffer exceeds GPU dimensions or 256 MiB budget");
+    if (!shake_program_) {
+        constexpr auto vertex=R"(#version 330 core
+layout(location=0) in vec2 position;
+out vec2 uv;
+void main() { uv=position; gl_Position=vec4(position.x*2.0-1.0,1.0-position.y*2.0,0,1); }
+)";
+        constexpr auto fragment=R"(#version 330 core
+in vec2 uv;
+uniform sampler2D original_image;
+uniform sampler2D history_image;
+uniform int kind;
+uniform vec4 transform;
+uniform int accumulate;
+out vec4 output_color;
+void main() {
+    vec2 p=uv*vec2(800,600);
+    if (kind==1) p-=transform.xy;
+    if (kind==2) p=vec2(transform.z)+uv*(vec2(800,600)-2.0*transform.z);
+    if (kind==3) {
+        float a=radians(transform.w);
+        float c=trunc(cos(a)*1024.0)/1024.0, s=trunc(sin(a)*1024.0)/1024.0;
+        vec2 d=p-vec2(400,300);
+        p=vec2(c*d.x-s*d.y,s*d.x+c*d.y)+vec2(400,300);
+    }
+    vec3 value=vec3(0);
+    if (all(greaterThanEqual(p,vec2(0))) && all(lessThan(p,vec2(800,600))))
+        value=texture(original_image,vec2(p.x/800.0,1.0-p.y/600.0)).rgb;
+    if (accumulate!=0) {
+        vec3 old=texture(history_image,vec2(uv.x,1.0-uv.y)).rgb;
+        value=floor((floor(value*255.0+0.5)+floor(old*255.0+0.5))/2.0)/255.0;
+    }
+    output_color=vec4(value,1);
+}
+)";
+        const auto vs=shader(GL_VERTEX_SHADER,vertex);
+        GLuint fs{};
+        try { fs=shader(GL_FRAGMENT_SHADER,fragment); }
+        catch (...) { glDeleteShader(vs); throw; }
+        shake_program_=glCreateProgram();
+        glAttachShader(shake_program_,vs); glAttachShader(shake_program_,fs);
+        glLinkProgram(shake_program_); glDeleteShader(vs); glDeleteShader(fs);
+        GLint success{}; glGetProgramiv(shake_program_,GL_LINK_STATUS,&success);
+        if (!success) { glDeleteProgram(shake_program_); shake_program_=0; throw std::runtime_error("Cannot link shake shader"); }
+    }
+    glActiveTexture(GL_TEXTURE0);
+    const bool capture=!shake_valid_ || shake_serial_!=serial || shake_view_!=state.viewport;
+    if (capture) {
+        shake_valid_=false;
+        for (auto* target : {&shake_source_,&shake_history_,&shake_next_}) {
+            target->resize(w,h);
+            glBindTexture(GL_TEXTURE_2D,target->texture);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+        }
+        glDisable(GL_SCISSOR_TEST);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER,static_cast<GLuint>(state.draw));
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER,shake_source_.framebuffer);
+        glBlitFramebuffer(state.viewport[0],state.viewport[1],state.viewport[0]+w,state.viewport[1]+h,
+                          0,0,w,h,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER,shake_source_.framebuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER,shake_history_.framebuffer);
+        glBlitFramebuffer(0,0,w,h,0,0,w,h,GL_COLOR_BUFFER_BIT,GL_NEAREST);
+        checked_gl("Capture shake canvas");
+        shake_serial_=serial; shake_view_=state.viewport; shake_sample_=~std::uint64_t{0}; shake_valid_=true;
+    }
+    const auto draw=[&](bool accumulate) {
+        glDisable(GL_BLEND); glDisable(GL_SCISSOR_TEST);
+        glUseProgram(shake_program_); glBindVertexArray(vao_);
+        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D,shake_source_.texture);
+        glUniform1i(glGetUniformLocation(shake_program_,"original_image"),0);
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D,shake_history_.texture);
+        glUniform1i(glGetUniformLocation(shake_program_,"history_image"),1);
+        glUniform1i(glGetUniformLocation(shake_program_,"accumulate"),accumulate ? 1 : 0);
+        glUniform1i(glGetUniformLocation(shake_program_,"kind"),static_cast<int>(frame.kind));
+        glUniform4f(glGetUniformLocation(shake_program_,"transform"),frame.x,frame.y,frame.crop,frame.angle);
+        glDrawArrays(GL_TRIANGLES,0,6);
+        glActiveTexture(GL_TEXTURE0);
+    };
+    if (frame.kind==ShakeKind::rotation && frame.sample!=0) {
+        if (shake_sample_!=frame.sample) {
+            glBindFramebuffer(GL_FRAMEBUFFER,shake_next_.framebuffer); glViewport(0,0,w,h);
+            draw(true);
+            std::swap(shake_history_.framebuffer,shake_next_.framebuffer);
+            std::swap(shake_history_.texture,shake_next_.texture);
+            shake_sample_=frame.sample;
+        }
+        state.target(); glDisable(GL_BLEND);
+        quad_id(shake_history_.texture,0,0,800,600,{1,1,1,1},true);
+    } else {
+        state.target(); draw(false);
+    }
+    checked_gl("Render shake canvas");
+}
+
 void Renderer::capture(const std::filesystem::path& path, int width, int height) const {
     if (width <= 0 || height <= 0) throw std::runtime_error("Cannot capture an empty framebuffer");
     const auto stride = static_cast<std::size_t>(width) * 3;

@@ -134,6 +134,20 @@ int main() {
         command(".transition 0 * 9999\n"); command(".stage frame.png wide.png 0 0 actor.png 400\n");
         for (const auto& layer : stage.current()) require(layer.screen.empty(),"Screen wildcard clears all scopes");
         rejects([&] { command(".screen shade_a\n"); });
+        command(".overlay shade_a shade_b shade_c\n");
+        require(stage.current()[0].overlay.empty(),"Overlay changed displayed material early");
+        command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        require(stage.current()[0].overlay=="sys/shade_b" && stage.current()[1].overlay=="sys/shade_c" && stage.current()[2].overlay=="sys/shade_a","Overlay scopes");
+        command(".overlay shade_c shade_a\n");
+        rejects([&] { command(".overlay shade_a missing\n"); });
+        command(".screen shade_b shade_c shade_a\n");
+        command(".transition 0 * 10\n"); command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        require(stage.previous()[0].overlay=="sys/shade_b" && stage.current()[0].overlay=="sys/shade_c","Overlay snapshots must be independent");
+        require(stage.current()[1].overlay=="sys/shade_a" && stage.current()[2].overlay.empty(),"Two overlay args clear frame; invalid update atomic");
+        require(stage.current()[0].screen=="sys/shade_c","Overlay and screen state must coexist");
+        stage.update(3); command(".overlay * * *\n"); command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        for (const auto& layer : stage.current()) require(layer.overlay.empty(),"Overlay wildcard clears all scopes");
+        rejects([&] { command(".overlay shade_a\n"); });
         std::cout << "Presentation tests PASS: scene placement, crossfade, scroll waits, panel, voiced messages and audio commands\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

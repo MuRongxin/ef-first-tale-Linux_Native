@@ -301,6 +301,8 @@ int run(const Options& options) {
             }
             }
         }
+        if (script && !options.text_preview && script->presentation().shaking())
+            renderer.shake(script->presentation().shake_frame(),script->presentation().shake_serial());
         if (SDL_GetTicks()<font_notice_until) {
             Layer background; background.kind=LayerKind::rectangle;
             background.x=10; background.y=10; background.width=780; background.height=84;

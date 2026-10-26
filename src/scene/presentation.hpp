@@ -2,6 +2,7 @@
 #include "audio/mixer.hpp"
 #include "scene/scene.hpp"
 #include "scene/snow.hpp"
+#include "scene/shake.hpp"
 #include "script/script.hpp"
 #include <optional>
 
@@ -21,6 +22,9 @@ public:
     [[nodiscard]] int panel_mode() const { return panel_; }
     [[nodiscard]] bool panel_visible() const { return panel_ != 0; }
     [[nodiscard]] std::vector<Layer> effects() const { return snow_ ? snow_->layers() : std::vector<Layer>{}; }
+    bool shaking() const { return shake_ && !shake_->finished(); }
+    ShakeFrame shake_frame() const { return shake_ ? shake_->frame() : ShakeFrame{}; }
+    std::uint64_t shake_serial() const { return shake_serial_; }
     AudioMixer& mixer() { return mixer_; }
     void realtime_audio(bool enabled) { realtime_ = enabled; }
 private:
@@ -34,6 +38,8 @@ private:
     std::array<bool,4> playing_loops_{};
     bool realtime_{};
     std::optional<Snow> snow_;
+    std::optional<Shake> shake_;
+    std::uint64_t shake_serial_{};
     std::vector<Layer> previous_, current_;
     std::uint64_t revision_{};
     int speed_{9999}, panel_{3};
@@ -43,6 +49,6 @@ private:
     std::optional<Scroll> scroll_;
     bool wait_scroll_{};
     std::optional<std::size_t> background_;
-    std::array<std::string,3> screens_; // pending frame/background/foreground materials
+    std::array<std::string,3> screens_,overlays_; // pending frame/background/foreground materials
 };
 }

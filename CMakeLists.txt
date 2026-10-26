@@ -21,6 +21,7 @@ add_library(ef_core
     src/scene/message_ui.cpp
     src/text/appearance.cpp
     src/text/layout.cpp
+    src/scene/shake.cpp
     src/scene/snow.cpp
     src/script/script.cpp
     src/script/dialogue.cpp
@@ -80,6 +81,10 @@ if(EF_BUILD_APP)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(ef_shake_tests tests/shake_tests.cpp)
+    target_link_libraries(ef_shake_tests PRIVATE ef_core)
+    ef_compile_options(ef_shake_tests)
+    add_test(NAME shake COMMAND ef_shake_tests)
     add_executable(ef_panel_transition_tests tests/panel_transition_tests.cpp src/app/script_view.cpp)
     target_link_libraries(ef_panel_transition_tests PRIVATE ef_core)
     ef_compile_options(ef_panel_transition_tests)
@@ -99,6 +104,9 @@ if(BUILD_TESTING)
         add_test(NAME audio_output COMMAND ef_audio_output_tests)
     endif()
     if(EF_BUILD_APP)
+        add_executable(ef_shake_render_tests tests/shake_render_tests.cpp src/render/renderer.cpp)
+        target_link_libraries(ef_shake_render_tests PRIVATE ef_core SDL3::SDL3 OpenGL::GL GLEW::GLEW)
+        ef_compile_options(ef_shake_render_tests)
         add_executable(ef_screen_render_tests tests/screen_render_tests.cpp src/render/renderer.cpp)
         target_link_libraries(ef_screen_render_tests PRIVATE ef_core SDL3::SDL3 OpenGL::GL GLEW::GLEW)
         ef_compile_options(ef_screen_render_tests)
@@ -107,6 +115,8 @@ if(BUILD_TESTING)
         ef_compile_options(ef_composite_tests)
         find_program(EF_XVFB_RUN xvfb-run)
         if(EF_XVFB_RUN)
+            add_test(NAME shake_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_shake_render_tests>)
+            set_tests_properties(shake_render PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME screen_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_screen_render_tests>)
             set_tests_properties(screen_render PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME composite COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_composite_tests>)
