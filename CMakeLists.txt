@@ -11,6 +11,10 @@ option(EF_SANITIZERS "Enable address and undefined-behavior sanitizers" OFF)
 include(CTest)
 include(cmake/Dependencies.cmake)
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schemas/script-ops.json" EF_SCRIPT_OPS)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/schemas/script-ops.json")
+configure_file(src/script/script_ops.hpp.in generated/script_ops.hpp @ONLY)
+
 add_library(ef_core
     src/settings/font_settings.cpp
     src/settings/window_settings.cpp
@@ -27,9 +31,10 @@ add_library(ef_core
     src/scene/shake.cpp
     src/scene/snow.cpp
     src/script/script.cpp
+    src/script/script_json.cpp
     src/script/dialogue.cpp
     src/scene/presentation.cpp)
-target_include_directories(ef_core PUBLIC src)
+target_include_directories(ef_core PUBLIC src PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_link_libraries(ef_core PUBLIC nlohmann_json::nlohmann_json PNG::PNG ${EF_WEBP_TARGET})
 
 function(ef_compile_options target)
@@ -55,6 +60,13 @@ target_link_libraries(ef_core PUBLIC ef_audio)
 if(EF_SANITIZERS AND CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(ef_stb_vorbis PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
 endif()
+
+add_library(ef_legacy_script STATIC src/script/legacy.cpp)
+target_link_libraries(ef_legacy_script PUBLIC ef_core)
+ef_compile_options(ef_legacy_script)
+add_executable(ef_script_verify tools/native/script_verify.cpp)
+target_link_libraries(ef_script_verify PRIVATE ef_legacy_script)
+ef_compile_options(ef_script_verify)
 
 find_package(Freetype QUIET)
 if(Freetype_FOUND)
@@ -198,6 +210,10 @@ if(BUILD_TESTING)
     target_link_libraries(ef_dialogue_tests PRIVATE ef_core)
     ef_compile_options(ef_dialogue_tests)
     add_test(NAME dialogue COMMAND ef_dialogue_tests)
+    add_executable(ef_script_json_tests tests/script_json_tests.cpp)
+    target_link_libraries(ef_script_json_tests PRIVATE ef_core)
+    ef_compile_options(ef_script_json_tests)
+    add_test(NAME script_json COMMAND ef_script_json_tests)
     add_executable(ef_script_tests tests/script_tests.cpp)
     target_link_libraries(ef_script_tests PRIVATE ef_core)
     ef_compile_options(ef_script_tests)
@@ -232,8 +248,18 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/font_customization_smoke.py --binary $<TARGET_FILE:ef_native>
                 --faces-binary $<TARGET_FILE:ef_font_faces_tests>)
         endif()
+        add_test(NAME script_json_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_script_json.py $<TARGET_FILE:ef_script_verify>)
         add_test(NAME content_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_prepare_content.py)
         add_test(NAME message_ui_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_message_ui_import.py)
         add_test(NAME content_package COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_package_content.py)
     endif()
+endif()
+
+# SC parsing belongs to offline verification and synthetic test fixtures, never the app.
+if(BUILD_TESTING)
+    foreach(target ef_script_tests ef_transition_tests ef_presentation_tests ef_resource_tests ef_shake_tests ef_composite_tests)
+        if(TARGET ${target})
+            target_link_libraries(${target} PRIVATE ef_legacy_script)
+        endif()
+    endforeach()
 endif()

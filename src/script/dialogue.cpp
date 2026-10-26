@@ -9,45 +9,54 @@ namespace ef {
 namespace {
 constexpr std::size_t maximum_source_bytes = 1024 * 1024;
 constexpr std::size_t maximum_tokens = 65536;
-constexpr double fixed_pause = 0.1;
 }
-Dialogue::Dialogue(std::string text, double characters_per_second) : source_(std::move(text)) {
-    if (!std::isfinite(characters_per_second) || characters_per_second < 0)
-        throw std::runtime_error("Dialogue speed must be finite and nonnegative");
-    if (characters_per_second > 0) {
-        seconds_per_character_ = 1 / characters_per_second;
-        if (!std::isfinite(seconds_per_character_)) throw std::runtime_error("Dialogue speed is too small");
+std::vector<DialogueEvent> legacy_dialogue_events(const std::string& text) {
+    if (text.size()>maximum_source_bytes || text.find('\0')!=std::string::npos) throw std::runtime_error("Invalid dialogue source budget/NUL");
+    (void)decode_utf8(text);
+    std::vector<DialogueEvent> events;std::string buffer;
+    auto flush=[&] {if (!buffer.empty()) {events.push_back({DialogueKind::text,std::move(buffer)});buffer.clear();}};
+    for (std::size_t offset=0;offset<text.size();) {
+        const char c=text[offset++];
+        if (c!='\\') {buffer+=c;continue;}
+        if (offset==text.size()) throw std::runtime_error("Dangling dialogue escape");
+        switch (text[offset++]) {
+        case 'n':buffer+='\n';break;
+        case '\\':buffer+='\\';break;
+        case 'a':flush();events.push_back({DialogueKind::automatic,{}});break;
+        case 'w':flush();events.push_back({DialogueKind::pause,{}});break;
+        case 'v':flush();events.push_back({DialogueKind::voice,{}});break;
+        default:throw std::runtime_error("Unsupported dialogue escape at byte "+std::to_string(offset-2));
+        }
+        if (events.size()>maximum_tokens) throw std::runtime_error("Dialogue event budget exceeded");
     }
-    if (source_.size() > maximum_source_bytes) throw std::runtime_error("Dialogue exceeds 1 MiB source budget");
-    (void)decode_utf8(source_);
-    if (source_.find('\0') != std::string::npos) throw std::runtime_error("NUL in dialogue");
-    for (std::size_t offset = 0; offset < source_.size();) {
-        if (tokens_.size() == maximum_tokens) throw std::runtime_error("Dialogue exceeds 65,536 token budget");
-        const auto first = static_cast<unsigned char>(source_[offset]);
-        if (first == '\\') {
-            if (offset+1 == source_.size()) throw std::runtime_error("Dangling dialogue escape");
-            const auto control = source_[offset+1];
-            switch (control) {
-            case 'n': tokens_.push_back({Kind::glyph,offset,0}); break;
-            case '\\': tokens_.push_back({Kind::glyph,offset,1}); break;
-            case 'a': tokens_.push_back({Kind::automatic}); break;
-            case 'w': tokens_.push_back({Kind::wait}); break;
-            case 'v': tokens_.push_back({Kind::voice}); needs_voice_ = true; break;
-            default: throw std::runtime_error("Unsupported dialogue escape at byte " + std::to_string(offset));
+    flush();return events;
+}
+Dialogue::Dialogue(std::string text,double speed) : Dialogue(legacy_dialogue_events(text),speed) {}
+Dialogue::Dialogue(const std::vector<DialogueEvent>& events,double characters_per_second) {
+    if (!std::isfinite(characters_per_second) || characters_per_second<0) throw std::runtime_error("Dialogue speed must be finite and nonnegative");
+    if (characters_per_second>0) {seconds_per_character_=1/characters_per_second;if (!std::isfinite(seconds_per_character_)) throw std::runtime_error("Dialogue speed is too small");}
+    if (events.size()>maximum_tokens) throw std::runtime_error("Dialogue event budget exceeded");
+    for (const auto& event:events) {
+        if (event.kind==DialogueKind::text) {
+            if (event.text.size()>maximum_source_bytes-source_.size() || event.text.find('\0')!=std::string::npos) throw std::runtime_error("Invalid dialogue text budget/NUL");
+            (void)decode_utf8(event.text);const auto start=source_.size();source_+=event.text;
+            for (std::size_t offset=start;offset<source_.size();) {
+                if (tokens_.size()==maximum_tokens) throw std::runtime_error("Dialogue exceeds 65,536 token budget");
+                const auto first=static_cast<unsigned char>(source_[offset]);
+                const std::size_t length=first<0x80 ? 1 : first<0xe0 ? 2 : first<0xf0 ? 3 : 4;
+                tokens_.push_back({Kind::glyph,offset,length});offset+=length;
             }
-            offset += 2;
         } else {
-            // Strict UTF-8 validation above guarantees complete, canonical code points.
-            const std::size_t length = first < 0x80 ? 1 : first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
-            tokens_.push_back({Kind::glyph,offset,length});
-            offset += length;
+            if (tokens_.size()==maximum_tokens) throw std::runtime_error("Dialogue exceeds 65,536 token budget");
+            if (event.kind==DialogueKind::automatic) tokens_.push_back({Kind::automatic});
+            else if (event.kind==DialogueKind::voice) {tokens_.push_back({Kind::voice});needs_voice_=true;}
+            else if (event.kind==DialogueKind::pause) {
+                if (event.ticks<0 || event.ticks>1000000) throw std::runtime_error("Dialogue pause out of range");
+                tokens_.push_back({Kind::wait,0,0,event.ticks/100.0});
+            } else throw std::runtime_error("Unknown dialogue event");
         }
     }
-    displayed_.reserve(source_.size());
-    for (const auto& token : tokens_) if (token.kind==Kind::glyph) {
-        if (token.length) full_text_.append(source_,token.begin,token.length);
-        else full_text_+='\n';
-    }
+    displayed_.reserve(source_.size());full_text_=source_;
 }
 bool Dialogue::complete() const { return cursor_ == tokens_.size() && pause_ == 0 && !voice_wait_; }
 void Dialogue::update(double seconds, bool voice_playing) {
@@ -96,7 +105,7 @@ void Dialogue::advance(double seconds, bool immediate) {
             ++cursor_;
             break;
         case Kind::wait:
-            pause_ = fixed_pause;
+            pause_ = token.pause;
             ++cursor_;
             break;
         case Kind::voice:

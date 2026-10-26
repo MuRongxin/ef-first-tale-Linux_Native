@@ -9,6 +9,9 @@ import shutil
 import subprocess
 from PIL import Image
 from render_smoke import ROOT, importer
+import sys
+sys.path.insert(0,str(ROOT/"tools"))
+from script_json import write_fixture_scripts
 
 
 def prepare_fixture(out):
@@ -50,6 +53,7 @@ def prepare_fixture(out):
     index = {"version": 1, "encoding": "utf-8", "view": "view.json", "message_ui": "message.ui.json",
              "scripts": {"scr/"+name: {"path": name} for name in scripts}}
     (out / "scripts/index.json").write_text(json.dumps(index))
+    write_fixture_scripts(out)
 
 
 def main():

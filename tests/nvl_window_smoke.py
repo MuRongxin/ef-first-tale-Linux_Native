@@ -9,7 +9,7 @@ import selectors
 import subprocess
 import time
 from PIL import Image
-from message_ui_smoke import ROOT, prepare_fixture
+from message_ui_smoke import ROOT, prepare_fixture, write_fixture_scripts
 from render_smoke import window_manager
 
 
@@ -36,6 +36,7 @@ def main():
         (out / (name + ".sc")).write_text(source)
         index["scripts"]["scr/"+name+".sc"] = {"path": name+".sc"}
     (out / "scripts/index.json").write_text(json.dumps(index))
+    write_fixture_scripts(out)
     environment = dict(os.environ, SDL_VIDEO_DRIVER="x11", LIBGL_ALWAYS_SOFTWARE="1")
     with window_manager(out, args.wm):
         x = ctypes.CDLL("libX11.so.6")

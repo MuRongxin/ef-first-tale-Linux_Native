@@ -1,0 +1,104 @@
+{
+  "format": "ef.script",
+  "version": 1,
+  "id": "scr/example",
+  "instructions": [
+    {
+      "source_line": 1,
+      "op": "stage",
+      "params": {
+        "frame": {
+          "asset": null
+        },
+        "background": {
+          "asset": "background.png",
+          "crop_x": 0,
+          "crop_y": 0
+        },
+        "actors": [
+          {
+            "asset": "actor.png",
+            "center_x": 600,
+            "bottom_trim": 75
+          }
+        ]
+      }
+    },
+    {
+      "source_line": 2,
+      "op": "dialogue",
+      "params": {
+        "id": 100,
+        "voice": "",
+        "speaker": "旁白",
+        "events": [
+          {
+            "type": "text",
+            "value": "你好。"
+          },
+          {
+            "type": "pause",
+            "ticks": 10
+          },
+          {
+            "type": "text",
+            "value": "\n请选择。"
+          }
+        ]
+      }
+    },
+    {
+      "source_line": 3,
+      "op": "choices",
+      "params": {
+        "options": [
+          {
+            "text": "观看视频",
+            "label": "watch"
+          },
+          {
+            "text": "结束",
+            "label": "done"
+          }
+        ]
+      }
+    },
+    {
+      "source_line": 4,
+      "op": "label",
+      "params": {
+        "name": "watch"
+      }
+    },
+    {
+      "source_line": 5,
+      "op": "movie",
+      "params": {
+        "id": 0,
+        "asset": "opening.mpg",
+        "width": 800,
+        "height": 600,
+        "skippable": true
+      }
+    },
+    {
+      "source_line": 6,
+      "op": "jump",
+      "params": {
+        "label": "done"
+      }
+    },
+    {
+      "source_line": 7,
+      "op": "label",
+      "params": {
+        "name": "done"
+      }
+    },
+    {
+      "source_line": 8,
+      "op": "end",
+      "params": {}
+    }
+  ]
+}

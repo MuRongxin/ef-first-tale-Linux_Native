@@ -1,0 +1,1895 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ef.script v1",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "ef.script"
+    },
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[^\\u0000]*$"
+    },
+    "instructions": {
+      "type": "array",
+      "maxItems": 200000,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "wait"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "ticks": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "ticks"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "label"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "jump"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  }
+                },
+                "required": [
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "chain"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "include"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "end"
+              },
+              "params": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "controls"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "transition"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "mask": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "speed": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "type",
+                  "mask",
+                  "speed"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "panel"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "frame"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "asset": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "asset"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "shake"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "amplitude": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "ticks": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "mode",
+                  "amplitude",
+                  "ticks"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "scroll"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "speed": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "speed"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "scroll_x"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "speed": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "target",
+                  "speed"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "scroll_y"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "speed": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "target",
+                  "speed"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "scroll_end"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "finish": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "finish"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "voice"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "asset": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "asset"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "bgm"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "asset": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "fade_in": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "fade_out": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "volume": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "asset"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "se"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "asset": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "loop": {
+                    "type": "boolean"
+                  },
+                  "fade_in": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "fade_out": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "asset"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "se2"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "asset": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "loop": {
+                    "type": "boolean"
+                  },
+                  "fade_in": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "fade_out": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "asset"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "movie"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "asset": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "skippable": {
+                    "type": "boolean"
+                  },
+                  "x": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "y": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "id",
+                  "asset",
+                  "width",
+                  "height"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "dialogue"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65535
+                  },
+                  "voice": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "speaker": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "events": {
+                    "type": "array",
+                    "maxItems": 65536,
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "const": "text"
+                            },
+                            "value": {
+                              "type": "string",
+                              "pattern": "^[^\\u0000]*$"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "const": "pause"
+                            },
+                            "ticks": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000000
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "ticks"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "auto_advance",
+                                "wait_voice"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "voice",
+                  "speaker",
+                  "events"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "stage"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "frame": {
+                    "type": "object",
+                    "properties": {
+                      "asset": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[^\\u0000]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "x": {
+                        "type": "integer",
+                        "minimum": -9223372036854775808,
+                        "maximum": 9223372036854775807
+                      },
+                      "y": {
+                        "type": "integer",
+                        "minimum": -9223372036854775808,
+                        "maximum": 9223372036854775807
+                      }
+                    },
+                    "required": [
+                      "asset"
+                    ],
+                    "additionalProperties": false,
+                    "dependentRequired": {
+                      "x": [
+                        "y"
+                      ],
+                      "y": [
+                        "x"
+                      ]
+                    }
+                  },
+                  "background": {
+                    "type": "object",
+                    "properties": {
+                      "asset": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[^\\u0000]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "crop_x": {
+                        "type": "integer",
+                        "minimum": -9223372036854775808,
+                        "maximum": 9223372036854775807
+                      },
+                      "crop_y": {
+                        "type": "integer",
+                        "minimum": -9223372036854775808,
+                        "maximum": 9223372036854775807
+                      }
+                    },
+                    "required": [
+                      "asset",
+                      "crop_x",
+                      "crop_y"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "actors": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "asset": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "pattern": "^[^\\u0000]*$"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "center_x": {
+                          "type": "integer",
+                          "minimum": -9223372036854775808,
+                          "maximum": 9223372036854775807
+                        },
+                        "bottom_trim": {
+                          "type": "integer",
+                          "minimum": -9223372036854775808,
+                          "maximum": 9223372036854775807
+                        }
+                      },
+                      "required": [
+                        "asset",
+                        "center_x"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "frame",
+                  "background",
+                  "actors"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "overlay"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "frame": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "background": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "foreground": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "background",
+                  "foreground"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "screen"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "frame": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "background": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "foreground": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "background",
+                  "foreground"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "color_filter"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "background": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "integer",
+                      "minimum": -9223372036854775808,
+                      "maximum": 9223372036854775807
+                    }
+                  },
+                  "foreground": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "integer",
+                      "minimum": -9223372036854775808,
+                      "maximum": 9223372036854775807
+                    }
+                  }
+                },
+                "required": [
+                  "background",
+                  "foreground"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "effect"
+              },
+              "params": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "pattern": "^[^\\u0000]*$"
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "const": "Cutin"
+                      },
+                      "asset": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[^\\u0000]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "hold_ticks": {
+                        "type": "integer",
+                        "minimum": -9223372036854775808,
+                        "maximum": 9223372036854775807
+                      },
+                      "rate": {
+                        "type": "integer",
+                        "minimum": -9223372036854775808,
+                        "maximum": 9223372036854775807
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "asset",
+                      "hold_ticks"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "const": "WScroll2"
+                      },
+                      "objects": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^[^\\u0000]*$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "period": {
+                        "type": "integer",
+                        "minimum": -9223372036854775808,
+                        "maximum": 9223372036854775807
+                      },
+                      "speed": {
+                        "type": "integer",
+                        "minimum": -9223372036854775808,
+                        "maximum": 9223372036854775807
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "objects",
+                      "period",
+                      "speed"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "set"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "from_variable": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "operator": {
+                    "enum": [
+                      "+",
+                      "-"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "dependentRequired": {
+                  "from_variable": [
+                    "operator"
+                  ],
+                  "operator": [
+                    "from_variable"
+                  ]
+                }
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "set_global"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "from_variable": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "operator": {
+                    "enum": [
+                      "+",
+                      "-"
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "additionalProperties": false,
+                "dependentRequired": {
+                  "from_variable": [
+                    "operator"
+                  ],
+                  "operator": [
+                    "from_variable"
+                  ]
+                }
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "branch"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "variable": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "comparison": {
+                    "enum": [
+                      "==",
+                      "!=",
+                      "<",
+                      "<=",
+                      ">",
+                      ">="
+                    ]
+                  },
+                  "value": {
+                    "type": "integer",
+                    "minimum": -9223372036854775808,
+                    "maximum": 9223372036854775807
+                  },
+                  "label": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  }
+                },
+                "required": [
+                  "variable",
+                  "comparison",
+                  "value",
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "choices"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "options": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 256,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "pattern": "^[^\\u0000]*$",
+                          "minLength": 1
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "^[^:\\u0000]+$"
+                        }
+                      },
+                      "required": [
+                        "text",
+                        "label"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "options"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9223372036854775807
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "const": "unsupported"
+              },
+              "params": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "arguments": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[^\\u0000]*$"
+                    }
+                  },
+                  "raw": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "pattern": "^[^\\u0000]*$"
+                  }
+                },
+                "required": [
+                  "command",
+                  "arguments",
+                  "raw",
+                  "reason"
+                ],
+                "additionalProperties": false
+              },
+              "source_line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "variant": {
+                "enum": [
+                  "e",
+                  "j"
+                ]
+              },
+              "colon_variant": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "op",
+              "params",
+              "source_line"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "id",
+    "instructions"
+  ],
+  "additionalProperties": false
+}

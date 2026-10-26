@@ -160,7 +160,7 @@ def package(project, game, out, font, face, hd_only=False, *, decode_images=Fals
         script_index = import_scripts(project, game, out, "gbk", publish=False)
         scripts = {}
         for id, spec in script_index["scripts"].items():
-            scripts[id] = safe_path(out, spec["path"]).read_text(encoding="utf-8")
+            scripts[id] = json.loads(safe_path(out, spec["path"]).read_text(encoding="utf-8")) if script_index["version"] == 2 else safe_path(out, spec["path"]).read_text(encoding="utf-8")
             entries[id] = {"kind": "script", "tag": id.split("/", 1)[0], "name": id.split("/", 1)[1],
                            "path": spec["path"], "source_sha256": spec["source_sha256"]}
         audio, archives = import_audio(game, out)

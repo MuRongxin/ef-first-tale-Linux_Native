@@ -13,6 +13,9 @@ import time
 
 from PIL import Image
 from render_smoke import ROOT, importer, window_manager
+import sys
+sys.path.insert(0,str(ROOT/"tools"))
+from script_json import write_fixture_scripts
 
 
 def main():
@@ -49,6 +52,7 @@ def main():
         (out / name).write_text(text, encoding="utf-8")
     index = {"version": 1, "encoding": "utf-8", "view": "view.json", "scripts": {"scr/"+name: {"path": name} for name in scripts}}
     (out / "scripts/index.json").write_text(json.dumps(index))
+    write_fixture_scripts(out)
     environment = dict(os.environ, SDL_VIDEO_DRIVER="x11", SDL_AUDIO_DRIVER="dummy", LIBGL_ALWAYS_SOFTWARE="1")
     with window_manager(out, args.wm):
         x11 = ctypes.CDLL("libX11.so.6")

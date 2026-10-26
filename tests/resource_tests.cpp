@@ -60,19 +60,19 @@ int main() {
             "exact archive names take precedence over fake-extension compatibility aliases");
         require(content.lookup_resource("image", "icon.png.tmp").status == ResourceStatus::ambiguous, "ambiguous fallback aliases rejected");
         for (const auto* name : {"../outside", "/outside", "a//b", "a/./b"}) rejects([&] { (void)resource_name(name); });
-        auto report = ScriptLibrary(content).audit_resources();
+        auto report = ScriptLibrary(content,{},parse_script).audit_resources();
         require(report.at("references") == 2 && report.at("missing") == 0 && report.at("ambiguous") == 0 && report.at("unavailable_files").empty(),
             "audit covers message voices and both timing variants, excludes dialogue filenames");
         std::ofstream(temp.path / "script.sc", std::ios::app) << ".transition 0 missing.png 10\n";
-        report = ScriptLibrary(content).audit_resources();
+        report = ScriptLibrary(content,{},parse_script).audit_resources();
         require(report.at("missing") == 1 && report.at("issues")[0]["line"] == 4, "missing resource has physical source line");
         std::ofstream(temp.path / "script.sc", std::ios::app) << ".effect Snow\n";
-        report = ScriptLibrary(content).audit_resources();
+        report = ScriptLibrary(content,{},parse_script).audit_resources();
         require(report.at("missing")==4 && report.at("references")==6,"snow's three implicit sprite dependencies are audited");
         // Restore the fixture so later checks retain their original missing-file scope.
         std::ofstream(temp.path / "script.sc") << ".message 10 voice-key #名字 对话里fake.png\n.message 20   旁白\n[j]:.stage * TEST.PNG 0 0\n.transition 0 missing.png 10\n";
         std::filesystem::remove(temp.path / "sound.ogg");
-        require(ScriptLibrary(content).audit_resources().at("unavailable_files").size() == 1, "declared but missing package file");
+        require(ScriptLibrary(content,{},parse_script).audit_resources().at("unavailable_files").size() == 1, "declared but missing package file");
 
         catalog["entries"]["st/test.png"]["source_sha256"] = different;
         manifest["images"]["st/test.png"]["source_sha256"] = different;

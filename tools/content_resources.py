@@ -60,15 +60,16 @@ class ResourceIndex:
 
 def references(text):
     """Yield physical line, variant, command, kind, name; dialogue is never token-scanned."""
-    for line_number, raw in enumerate(text.lstrip("\ufeff").splitlines(), 1):
-        line, variant = raw.lstrip(" \t"), ""
-        if line.startswith(("[e].", "[j].")):
-            variant, line = line[1], line[3:]
-        if not line.startswith((".", "#include ", "#include\t")):
+    from script_json import legacy_lines, native_arguments
+    if isinstance(text, dict):
+        if text.get('format') != 'ef.script' or text.get('version') != 1:
+            raise ValueError('Unsupported script JSON')
+        rows = ((n['source_line'], n.get('variant', ''), *native_arguments(n)) for n in text['instructions'])
+    else:
+        rows = ((n['line'], n['variant'], n['command'], n['args']) for n in legacy_lines(text))
+    for line_number, variant, cmd, args in rows:
+        if cmd == "<unparsed>":
             continue
-        head = re.split(r"[ \t]", line, maxsplit=1)
-        cmd, rest = head[0], head[1] if len(head) == 2 else ""
-        args = rest.split(" ", 3) if cmd == ".message" else rest.split()
         refs = []
         if cmd == ".message":
             if len(args) != 4:
@@ -79,6 +80,8 @@ def references(text):
                 raise ValueError(f"第 {line_number} 行 {cmd} 缺少参数")
             kind = {".playBGM": "bgm", ".playSE": "se", ".playSE2": "se", ".playVoice": "voice", ".chain": "script", "#include": "script"}[cmd]
             refs = [(kind, args[0])]
+        elif cmd == ".effect" and args and args[0] in ("Snow", "SnowH"):
+            refs = [("image", name) for name in ("snowS.png", "snowM.png", "snowL.png")]
         elif cmd == ".movie":
             if len(args) < 2:
                 raise ValueError(f"第 {line_number} 行 movie 字段不完整")

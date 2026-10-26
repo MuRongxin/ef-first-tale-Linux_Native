@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import time
 import tempfile
-from message_ui_smoke import ROOT, prepare_fixture
+from message_ui_smoke import ROOT, prepare_fixture, write_fixture_scripts
 
 
 def main():
@@ -32,6 +32,7 @@ def main():
     index = json.loads((out/'scripts/index.json').read_text())
     index['scripts']['scr/nvl.sc'] = {'path': 'nvl.sc'}
     (out/'scripts/index.json').write_text(json.dumps(index))
+    write_fixture_scripts(out)
     config = out/'preferences/font.json'
     config.parent.mkdir(exist_ok=True)
     config.unlink(missing_ok=True)

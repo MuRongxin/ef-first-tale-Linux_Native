@@ -16,16 +16,10 @@ std::int64_t integer(const std::string& value) {
     if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) throw std::runtime_error("Expected integer: " + value);
     return result;
 }
-std::vector<std::string> words(const std::string& text) {
-    std::istringstream stream(text);
-    std::vector<std::string> result;
-    for (std::string value; stream >> value;) result.push_back(std::move(value));
-    return result;
-}
 void count(const Instruction& instruction, std::size_t expected) {
     if (instruction.args.size() != expected) throw std::runtime_error("Expected " + std::to_string(expected) + " arguments");
 }
-void validate(const Instruction& instruction) {
+void validate_values(const Instruction& instruction) {
     const auto& cmd = instruction.command;
     const auto& args = instruction.args;
     if (cmd == ".message") {
@@ -58,62 +52,16 @@ void validate(const Instruction& instruction) {
     }
 }
 }
+void validate_instruction(const Instruction& instruction) {validate_values(instruction);}
 std::string Instruction::location() const { return script + ':' + std::to_string(line) + ' ' + command; }
 bool core_command(const std::string& name) {
     static const std::set<std::string> supported{".message", ".wait", ".label", ".goto", ".if", ".select", ".set", ".setGlobal", ".chain", ".end", ".pragma", "#include"};
     return supported.contains(name);
 }
-std::vector<Instruction> parse_script(std::string_view text, const std::string& id) {
-    (void)decode_utf8(text);
-    if (text.find('\0') != std::string_view::npos) throw std::runtime_error(id + ": NUL in script");
-    if (text.starts_with("\xef\xbb\xbf")) text.remove_prefix(3);
-    std::istringstream stream{std::string(text)};
-    std::vector<Instruction> output;
-    std::size_t line_number{};
-    for (std::string raw; std::getline(stream, raw);) {
-        ++line_number;
-        if (!raw.empty() && raw.back() == '\r') raw.pop_back();
-        const auto first = raw.find_first_not_of(" \t");
-        if (first == std::string::npos) continue;
-        // The native loader drops these unmatched production-note tokens after stripping [e]/[j].
-        // Limit compatibility to the full-width semicolon; unknown command text remains strict.
-        std::string_view note=std::string_view(raw).substr(first);
-        if (note.starts_with("[e]") || note.starts_with("[j]")) note.remove_prefix(3);
-        if (note.starts_with("；")) continue;
-        Instruction instruction{id, {}, raw, line_number, 0, {}};
-        std::string line = raw.substr(first);
-        if (line.starts_with("[e]:.") || line.starts_with("[j]:.")) {
-            instruction.variant = line[1];
-            line.erase(0,4); // explicitly supported archive spelling; raw/physical line are retained
-        } else if (line.starts_with("[e].") || line.starts_with("[j].")) {
-            instruction.variant = line[1];
-            line.erase(0, 3);
-        }
-        const auto separator = line.find_first_of(" \t");
-        instruction.command = line.substr(0, separator);
-        if (line.front() != '.' && !line.starts_with("#include")) instruction.command = "<unparsed>";
-        const auto arguments = separator == std::string::npos ? std::string{} : line.substr(separator + 1);
-        if (instruction.command == ".message") {
-            // The first three ASCII spaces delimit id, voice and name; empty fields matter.
-            std::size_t begin = 0;
-            for (int i = 0; i < 3; ++i) {
-                const auto end = arguments.find(' ', begin);
-                if (end == std::string::npos) throw std::runtime_error(instruction.location() + ": message requires id voice name text (empty fields allowed)");
-                instruction.args.push_back(arguments.substr(begin, end - begin));
-                begin = end + 1;
-            }
-            instruction.args.push_back(arguments.substr(begin));
-        } else instruction.args = words(arguments);
-        try { validate(instruction); }
-        catch (const std::exception& e) { throw std::runtime_error(instruction.location() + ": " + e.what()); }
-        output.push_back(std::move(instruction));
-    }
-    return output;
-}
-ScriptLibrary::ScriptLibrary(const Content& content) : content_(content) {
-    const auto index = content.read_json(content.script_index());
-    if (index.at("version") != 1 || index.at("encoding") != "utf-8" || !index.at("scripts").is_object())
-        throw std::runtime_error("Unsupported script index");
+ScriptLibrary::ScriptLibrary(const Content& content,const std::string& index_path,LegacyParser legacy_parser) : content_(content),legacy_sc_(static_cast<bool>(legacy_parser)),parser_(legacy_parser ? std::move(legacy_parser) : read_script_json) {
+    const auto index = content.read_json(index_path.empty() ? content.script_index() : index_path);
+    if (!index.at("version").is_number_integer() || index.at("version") != (legacy_sc_ ? 1 : 2) || (!legacy_sc_ && index.value("format","")!="ef.script.v1") || index.at("encoding") != "utf-8" || !index.at("scripts").is_object())
+        throw std::runtime_error("Expected JSON script index v2; migrate the content package with tools/migrate_scripts.py");
     for (const auto& [id, entry] : index.at("scripts").items()) {
         if (id.empty() || id.find("..") != std::string::npos || id.find('\\') != std::string::npos || id.front() == '/')
             throw std::runtime_error("Invalid script ID: " + id);
@@ -130,7 +78,11 @@ std::vector<Instruction> ScriptLibrary::parse(const std::string& id) const {
     std::ifstream file(path, std::ios::binary);
     if (!file) throw std::runtime_error("Cannot read script: " + id);
     std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
-    return parse_script(text, id);
+    try {
+        auto instructions=parser_(text,id);
+        for (const auto& i:instructions) if (!i.unsupported) validate_instruction(i);
+        return instructions;
+    } catch (const std::exception& e) {throw std::runtime_error(id+": "+e.what());}
 }
 std::string ScriptLibrary::resolve(const std::string& current, const std::string& target) const {
     if (target.find('/') != std::string::npos || target.find('\\') != std::string::npos || target.find("..") != std::string::npos)
@@ -176,12 +128,14 @@ std::shared_ptr<const Program> ScriptLibrary::compile(const std::string& id, cha
 nlohmann::json ScriptLibrary::audit() const {
     nlohmann::json report{{"support_scope", "core_control_flow; scene/audio capabilities depend on runtime host and arguments"}, {"scripts", entries_.size()}, {"instructions", 0}, {"messages", 0}, {"commands", nlohmann::json::object()}, {"unsupported", nlohmann::json::object()}};
     std::size_t instructions = 0, messages = 0;
+    auto preserved = nlohmann::json::array();
     std::map<std::string, std::size_t> commands, unsupported;
     for (const auto& [id, path] : entries_) {
         (void)path;
         for (const auto& instruction : parse(id)) {
             ++instructions;
             ++commands[instruction.command];
+            if (instruction.unsupported) preserved.push_back(instruction.location());
             if (instruction.command == ".message") ++messages;
             if (!core_command(instruction.command)) ++unsupported[instruction.command];
         }
@@ -192,6 +146,7 @@ nlohmann::json ScriptLibrary::audit() const {
     report["messages"] = messages;
     report["commands"] = commands;
     report["unsupported"] = unsupported;
+    report["preserved_unsupported"] = preserved;
     return report;
 }
 nlohmann::json ScriptLibrary::audit_resources() const {
@@ -300,7 +255,7 @@ void ScriptRuntime::update(double seconds) {
         if (pc_ == program_->instructions.size()) { state_ = ScriptState::ended; break; }
         const auto instruction = program_->instructions.at(pc_++);
         try {
-            if (instruction.raw.find("[e]:.") != std::string::npos || instruction.raw.find("[j]:.") != std::string::npos)
+            if (instruction.colon_variant || instruction.raw.find("[e]:.") != std::string::npos || instruction.raw.find("[j]:.") != std::string::npos)
                 diagnostic(instruction,"compatibility: colon after timing variant");
             execute(instruction);
         }
@@ -325,15 +280,25 @@ void ScriptRuntime::choose(std::size_t index) {
 void ScriptRuntime::execute(const Instruction& instruction) {
     const auto& cmd = instruction.command;
     const auto& args = instruction.args;
+    if (instruction.unsupported) {
+        if (!options_.text_preview) throw std::runtime_error("Unsupported preserved JSON instruction");
+        diagnostic(instruction,"text-preview: unsupported preserved instruction");return;
+    }
     if (cmd == ".message") {
         if (!options_.text_preview && !args[1].empty() && !host_.message)
             throw std::runtime_error("Voice output requires a script host; use --text-preview for proofreading");
         std::optional<Dialogue> text;
-        if (!options_.text_preview) text.emplace(args[3],options_.characters_per_second);
+        if (!options_.text_preview) {
+            if (instruction.events) text.emplace(*instruction.events,options_.characters_per_second);
+            else text.emplace(args[3],options_.characters_per_second);
+        }
+        message_plain_=instruction.events.has_value();
         if (text && text->waits_for_voice() && !host_.voice_playing)
             throw std::runtime_error("Voice wait requires a voice-state callback");
         if (options_.text_preview && !args[1].empty()) diagnostic(instruction, "text-preview: message voice is not played");
-        if (options_.text_preview && (args[3].find("\\w") != std::string::npos || args[3].find("\\v") != std::string::npos || args[3].find("\\a") != std::string::npos))
+        const bool timing=instruction.events ? std::any_of(instruction.events->begin(),instruction.events->end(),[](const DialogueEvent& e) {return e.kind!=DialogueKind::text;}) :
+            args[3].find("\\w")!=std::string::npos || args[3].find("\\v")!=std::string::npos || args[3].find("\\a")!=std::string::npos;
+        if (options_.text_preview && timing)
             diagnostic(instruction, "text-preview: timing escapes are displayed without original timing");
         message_ = Message{instruction.script, args[1], args[2], args[3], static_cast<int>(integer(args[0])), instruction.line};
         if (!options_.text_preview && host_.message) host_.message(*message_);
@@ -392,10 +357,10 @@ void ScriptRuntime::execute(const Instruction& instruction) {
     else throw std::runtime_error("Unimplemented command (strict mode): " + cmd);
 }
 std::string ScriptRuntime::full_message_text() const {
-    return dialogue_ ? dialogue_->full_text() : message_ ? message_display_text(message_->text) : "";
+    return dialogue_ ? dialogue_->full_text() : message_ ? (message_plain_ ? message_->text : message_display_text(message_->text)) : "";
 }
 std::string ScriptRuntime::displayed_text() const {
-    return dialogue_ ? dialogue_->text() : message_ ? message_display_text(message_->text) : "";
+    return dialogue_ ? dialogue_->text() : message_ ? (message_plain_ ? message_->text : message_display_text(message_->text)) : "";
 }
 std::string message_display_text(const std::string& text) {
     std::string result;

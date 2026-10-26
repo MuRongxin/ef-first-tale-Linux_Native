@@ -15,9 +15,15 @@ struct Instruction {
     std::size_t line{};
     char variant{};
     std::vector<std::string> args;
+    std::optional<std::vector<DialogueEvent>> events{};
+    bool colon_variant{}, unsupported{};
     [[nodiscard]] std::string location() const;
 };
+// Only ef_legacy_script (offline tools/tests) defines the SC lexical parser.
+void validate_instruction(const Instruction& instruction);
 std::vector<Instruction> parse_script(std::string_view text, const std::string& id);
+std::vector<Instruction> script_json(const nlohmann::json& document,const std::string& id);
+std::vector<Instruction> read_script_json(std::string_view text,const std::string& id);
 bool core_command(const std::string& name);
 struct Program {
     std::string id;
@@ -26,7 +32,9 @@ struct Program {
 };
 class ScriptLibrary {
 public:
-    explicit ScriptLibrary(const Content& content);
+    using LegacyParser=std::function<std::vector<Instruction>(std::string_view,const std::string&)>;
+    // A legacy callback is exclusively for offline migration verification; application uses JSON.
+    explicit ScriptLibrary(const Content& content,const std::string& index_path={},LegacyParser legacy_parser={});
     [[nodiscard]] std::vector<Instruction> parse(const std::string& id) const;
     [[nodiscard]] std::shared_ptr<const Program> compile(const std::string& id, char variant) const;
     [[nodiscard]] std::string resolve(const std::string& current, const std::string& target) const;
@@ -36,6 +44,8 @@ public:
 private:
     void expand(const std::string& id, char variant, std::set<std::string>& stack, std::vector<Instruction>& out) const;
     const Content& content_;
+    bool legacy_sc_{};
+    LegacyParser parser_;
     std::map<std::string, std::string> entries_;
 };
 enum class ScriptState { running, message, waiting, choices, ended };
@@ -91,7 +101,7 @@ private:
     std::optional<Message> message_;
     std::optional<Dialogue> dialogue_;
     std::uint64_t message_serial_{};
-    bool controls_enabled_{true};
+    bool controls_enabled_{true},message_plain_{};
     std::vector<Choice> choices_;
     std::map<std::string, std::int64_t> variables_, globals_;
     std::set<std::string> reported_;

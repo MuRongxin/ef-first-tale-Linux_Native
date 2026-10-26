@@ -1,0 +1,341 @@
+{
+  ".wait": {
+    "op": "wait",
+    "fields": [
+      {
+        "name": "ticks",
+        "type": "integer"
+      }
+    ],
+    "minimum": 1
+  },
+  ".label": {
+    "op": "label",
+    "fields": [
+      {
+        "name": "name",
+        "type": "string"
+      }
+    ],
+    "minimum": 1
+  },
+  ".goto": {
+    "op": "jump",
+    "fields": [
+      {
+        "name": "label",
+        "type": "string"
+      }
+    ],
+    "minimum": 1
+  },
+  ".chain": {
+    "op": "chain",
+    "fields": [
+      {
+        "name": "target",
+        "type": "string"
+      }
+    ],
+    "minimum": 1
+  },
+  "#include": {
+    "op": "include",
+    "fields": [
+      {
+        "name": "target",
+        "type": "string"
+      }
+    ],
+    "minimum": 1
+  },
+  ".end": {
+    "op": "end",
+    "fields": [],
+    "minimum": 0
+  },
+  ".pragma": {
+    "op": "controls",
+    "fields": [
+      {
+        "name": "mode",
+        "type": "string"
+      }
+    ],
+    "minimum": 1
+  },
+  ".transition": {
+    "op": "transition",
+    "fields": [
+      {
+        "name": "type",
+        "type": "integer"
+      },
+      {
+        "name": "mask",
+        "type": "asset"
+      },
+      {
+        "name": "speed",
+        "type": "integer"
+      }
+    ],
+    "minimum": 3
+  },
+  ".panel": {
+    "op": "panel",
+    "fields": [
+      {
+        "name": "mode",
+        "type": "integer"
+      }
+    ],
+    "minimum": 1
+  },
+  ".frame": {
+    "op": "frame",
+    "fields": [
+      {
+        "name": "asset",
+        "type": "asset"
+      }
+    ],
+    "minimum": 1
+  },
+  ".shakeScreen": {
+    "op": "shake",
+    "fields": [
+      {
+        "name": "mode",
+        "type": "string"
+      },
+      {
+        "name": "amplitude",
+        "type": "integer"
+      },
+      {
+        "name": "ticks",
+        "type": "integer"
+      }
+    ],
+    "minimum": 3
+  },
+  ".scroll": {
+    "op": "scroll",
+    "fields": [
+      {
+        "name": "x",
+        "type": "integer"
+      },
+      {
+        "name": "y",
+        "type": "integer"
+      },
+      {
+        "name": "speed",
+        "type": "integer"
+      }
+    ],
+    "minimum": 3
+  },
+  ".hscroll": {
+    "op": "scroll_x",
+    "fields": [
+      {
+        "name": "target",
+        "type": "integer"
+      },
+      {
+        "name": "speed",
+        "type": "integer"
+      }
+    ],
+    "minimum": 2
+  },
+  ".vscroll": {
+    "op": "scroll_y",
+    "fields": [
+      {
+        "name": "target",
+        "type": "integer"
+      },
+      {
+        "name": "speed",
+        "type": "integer"
+      }
+    ],
+    "minimum": 2
+  },
+  ".endScroll": {
+    "op": "scroll_end",
+    "fields": [
+      {
+        "name": "finish",
+        "type": "flag"
+      }
+    ],
+    "minimum": 1
+  },
+  ".playVoice": {
+    "op": "voice",
+    "fields": [
+      {
+        "name": "asset",
+        "type": "asset"
+      }
+    ],
+    "minimum": 1
+  },
+  ".playBGM": {
+    "op": "bgm",
+    "fields": [
+      {
+        "name": "asset",
+        "type": "asset"
+      },
+      {
+        "name": "fade_in",
+        "type": "default_integer",
+        "default": 1
+      },
+      {
+        "name": "fade_out",
+        "type": "default_integer",
+        "default": 1
+      },
+      {
+        "name": "volume",
+        "type": "integer",
+        "default": 100
+      }
+    ],
+    "minimum": 1
+  },
+  ".playSE": {
+    "op": "se",
+    "fields": [
+      {
+        "name": "asset",
+        "type": "asset"
+      },
+      {
+        "name": "loop",
+        "type": "loop",
+        "default": false
+      },
+      {
+        "name": "fade_in",
+        "type": "default_integer",
+        "default": 2
+      },
+      {
+        "name": "fade_out",
+        "type": "default_integer",
+        "default": 2
+      }
+    ],
+    "minimum": 1
+  },
+  ".playSE2": {
+    "op": "se2",
+    "fields": [
+      {
+        "name": "asset",
+        "type": "asset"
+      },
+      {
+        "name": "loop",
+        "type": "loop",
+        "default": false
+      },
+      {
+        "name": "fade_in",
+        "type": "default_integer",
+        "default": 2
+      },
+      {
+        "name": "fade_out",
+        "type": "default_integer",
+        "default": 2
+      }
+    ],
+    "minimum": 1
+  },
+  ".movie": {
+    "op": "movie",
+    "fields": [
+      {
+        "name": "id",
+        "type": "integer"
+      },
+      {
+        "name": "asset",
+        "type": "string"
+      },
+      {
+        "name": "width",
+        "type": "integer"
+      },
+      {
+        "name": "height",
+        "type": "integer"
+      },
+      {
+        "name": "skippable",
+        "type": "movie_flag",
+        "default": true
+      },
+      {
+        "name": "x",
+        "type": "integer",
+        "default": 0
+      },
+      {
+        "name": "y",
+        "type": "integer",
+        "default": 0
+      }
+    ],
+    "minimum": 4
+  },
+  ".message": {
+    "op": "dialogue",
+    "special": true
+  },
+  ".stage": {
+    "op": "stage",
+    "special": true
+  },
+  ".overlay": {
+    "op": "overlay",
+    "special": true
+  },
+  ".screen": {
+    "op": "screen",
+    "special": true
+  },
+  ".HSVfilter": {
+    "op": "color_filter",
+    "special": true
+  },
+  ".effect": {
+    "op": "effect",
+    "special": true
+  },
+  ".set": {
+    "op": "set",
+    "special": true
+  },
+  ".setGlobal": {
+    "op": "set_global",
+    "special": true
+  },
+  ".if": {
+    "op": "branch",
+    "special": true
+  },
+  ".select": {
+    "op": "choices",
+    "special": true
+  }
+}

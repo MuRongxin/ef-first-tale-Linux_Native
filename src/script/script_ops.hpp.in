@@ -1,0 +1,2 @@
+#pragma once
+namespace ef { inline constexpr char script_operations[] = R"efops(@EF_SCRIPT_OPS@)efops"; }

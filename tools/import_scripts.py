@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from paz import PazArchive
+from script_json import compile_script, encode
 from prepare_content import safe_path, write_json
 
 
@@ -76,7 +77,7 @@ def import_scripts(project: Path, game: Path, out: Path, encoding: str, *, publi
     scripts_dir.mkdir(exist_ok=True)
     blobs = safe_path(out, "blobs")
     blobs.mkdir(exist_ok=True)
-    index = {"version": 1, "encoding": "utf-8", "scripts": {}, "source_archives": {}}
+    index = {"version": 2, "format": "ef.script.v1", "encoding": "utf-8", "scripts": {}, "source_archives": {}}
     for tag, relative in (("scr", "scr.paz"), ("r18_scr", "r18_cn/scr.paz")):
         archive_path = game / relative
         if tag == "r18_scr" and not archive_path.is_file():
@@ -90,8 +91,10 @@ def import_scripts(project: Path, game: Path, out: Path, encoding: str, *, publi
                 safe_path(out, name)
                 original = archive.read(entry)
                 converted = transcode(original, encoding)
+                utf8_digest = hashlib.sha256(converted).hexdigest()
+                converted = encode(compile_script(converted.decode("utf-8"), f"{tag}/{name}"))
                 digest = hashlib.sha256(converted).hexdigest()
-                path = f"blobs/{digest}.sc"
+                path = f"blobs/{digest}.script.json"
                 # Immutable content-addressed files; publish the index only after all succeed.
                 target = safe_path(out, path)
                 if not target.exists() or target.read_bytes() != converted:
@@ -103,8 +106,8 @@ def import_scripts(project: Path, game: Path, out: Path, encoding: str, *, publi
                         temporary.unlink(missing_ok=True)
                 index["scripts"][f"{tag}/{name}"] = {
                     "path": path, "source_sha256": hashlib.sha256(original).hexdigest(),
-                    "utf8_sha256": digest, "source_encoding": encoding,
-                    "lines": len(converted.decode("utf-8").splitlines()),
+                    "utf8_sha256": utf8_digest, "json_sha256": digest, "source_encoding": encoding,
+                    "lines": len(original.decode(encoding).split("\n")),
                 }
     view = json.loads((project / "examples/script.scene.json").read_text(encoding="utf-8"))
     view_data = (json.dumps(view, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
@@ -114,7 +117,7 @@ def import_scripts(project: Path, game: Path, out: Path, encoding: str, *, publi
     import_message_ui(project, out, index)
     if publish:
         write_json(safe_path(out, "scripts/index.json"), index)
-    print(f"已严格转码并导入 {len(index['scripts'])} 个脚本", flush=True)
+    print(f"已严格转码并编译为JSON，导入 {len(index['scripts'])} 个脚本", flush=True)
     return index
 
 

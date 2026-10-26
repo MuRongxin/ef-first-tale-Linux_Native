@@ -7,7 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from message_ui_smoke import ROOT, prepare_fixture
+from message_ui_smoke import ROOT, prepare_fixture, write_fixture_scripts
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--binary', type=Path, required=True)
@@ -26,4 +26,5 @@ with tempfile.TemporaryDirectory(prefix='panel-transition-', dir=ROOT/'build') a
     index = json.loads((out/'scripts/index.json').read_text())
     index['scripts']['scr/timing.sc'] = {'path': 'timing.sc'}
     (out/'scripts/index.json').write_text(json.dumps(index))
+    write_fixture_scripts(out)
     subprocess.run([str(args.binary), str(out)], check=True)
