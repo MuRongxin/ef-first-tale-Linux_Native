@@ -124,6 +124,24 @@ ResourceMatch Content::lookup_resource(const std::string& kind, const std::strin
             hashes.insert(item.source_sha256);
         }
         if (!selected.candidates.empty()) selected.status = hashes.size() == 1 ? ResourceStatus::resolved : ResourceStatus::ambiguous;
+        // Native stage-stand loader (0x4df99c -> 0x5081a0 -> 0x5068e0) probes the st
+        // archive reader first (slot 3 / 0x5e0898 at 0x506cb0) and only falls back to the
+        // bg reader (slot 2 / 0x5e0628 at 0x506d2e) when st.paz lacks the file. Every
+        // cross-archive bg/st duplicate in this content set is a tachie image, so resolve
+        // such a pair to st instead of failing closed. Other ambiguities stay unresolved.
+        if (selected.status == ResourceStatus::ambiguous) {
+            std::vector<std::string> st_ids;
+            bool only_bg_st = true;
+            for (const auto& id : selected.candidates) {
+                const auto& item = resources_.at(id);
+                only_bg_st = only_bg_st && item.kind == "image" && (item.tag == "bg" || item.tag == "st");
+                if (item.tag == "st") st_ids.push_back(id);
+            }
+            if (only_bg_st && st_ids.size() == 1) {
+                selected.candidates = st_ids;
+                selected.status = ResourceStatus::resolved;
+            }
+        }
         return selected;
     };
     if (const auto exact = resource_names_.find({kind, normalized}); exact != resource_names_.end()) {

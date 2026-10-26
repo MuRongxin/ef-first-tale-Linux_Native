@@ -47,6 +47,13 @@ class ResourceIndex:
         if not ids:
             return {"status": "missing", "candidates": []}
         if len({self.entries[id]["source_sha256"] for id in ids}) > 1:
+            # Native stage-stand loader (0x4df99c -> 0x5081a0 -> 0x5068e0) probes the st
+            # archive reader first (slot 3 / 0x5e0898 at 0x506cb0) and only falls back to
+            # the bg reader (slot 2 / 0x5e0628 at 0x506d2e) when st.paz lacks the file.
+            # Every cross-archive bg/st duplicate in this content set is a tachie image.
+            if kind == "image" and len(ids) == 2 and {self.entries[id]["tag"] for id in ids} == {"bg", "st"}:
+                st = next(id for id in ids if self.entries[id]["tag"] == "st")
+                return {"status": "resolved", "id": st}
             return {"status": "ambiguous", "candidates": ids}
         return {"status": "resolved", "id": ids[0]}
 

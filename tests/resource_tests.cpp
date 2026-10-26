@@ -78,13 +78,14 @@ int main() {
         manifest["images"]["st/test.png"]["source_sha256"] = different;
         write(temp.path / "catalog.json", catalog);
         write(temp.path / "manifest.json", manifest);
-        Content ambiguous(temp.path);
-        require(ambiguous.lookup_resource("image", "test.png").status == ResourceStatus::ambiguous, "bg/st disagreement is not guessed");
-        rejects([&] { (void)ambiguous.resource("image", "test.png"); });
+        Content preferred(temp.path);
+        require(preferred.lookup_resource("image", "test.png").status == ResourceStatus::resolved &&
+            preferred.resource("image", "test.png").id == "st/test.png",
+            "native stage-stand loader resolves bg/st duplicates to st");
         catalog["entries"]["voice/voice-key"]["path"] = "../outside";
         write(temp.path / "catalog.json", catalog);
         rejects([&] { Content invalid(temp.path); });
-        std::cout << "Resource tests PASS: names, aliases, patch gating, ambiguity, catalog confinement and script reference audit\n";
+        std::cout << "Resource tests PASS: names, aliases, patch gating, native bg/st priority, catalog confinement and script reference audit\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

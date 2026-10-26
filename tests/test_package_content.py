@@ -20,7 +20,7 @@ def entry(tag, name, digest="same", kind="image", **extra):
 
 
 class ReferenceTests(unittest.TestCase):
-    def test_overlay_same_content_and_ambiguity(self):
+    def test_overlay_same_content_and_native_priority(self):
         entries = {"bg/Test.png": entry("bg", "Test.png"), "st/test.png": entry("st", "test.png"),
                    "sys/button.png-": entry("sys", "button.png-"),
                    "r18_sys/button.png": entry("r18_sys", "button.png", "patch"),
@@ -36,7 +36,7 @@ class ReferenceTests(unittest.TestCase):
         self.assertEqual(index.resolve("image", "icon.png-")["id"], "sys/icon.png-")
         self.assertEqual(index.resolve("image", "icon.png.tmp")["status"], "ambiguous")
         entries["st/test.png"]["source_sha256"] = "different"
-        self.assertEqual(index.resolve("image", "test.png")["status"], "ambiguous")
+        self.assertEqual(index.resolve("image", "test.png")["id"], "st/test.png")
         for bad in ("../test.png", "/test.png", "a//b", "a\0b"):
             with self.assertRaises(ValueError):
                 index.resolve("image", bad)
