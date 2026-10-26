@@ -69,4 +69,20 @@ if(EF_BUILD_APP)
             URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3)
         FetchContent_MakeAvailable(SDL3)
     endif()
+
+    # Optional: movie playback (H.264/MPEG via FFmpeg). The runtime decodes content/video
+    # files; without the development headers .movie stays a strict unsupported error.
+    find_path(EF_FFMPEG_INCLUDE_DIR NAMES libavcodec/avcodec.h
+        HINTS "${EF_FFMPEG_ROOT}/include" "${EF_FFMPEG_ROOT}/include/x86_64-linux-gnu"
+        PATH_SUFFIXES x86_64-linux-gnu)
+    foreach(_ef_ffmpeg_lib avcodec avformat avutil swscale swresample)
+        string(TOUPPER "${_ef_ffmpeg_lib}" _ef_ffmpeg_upper)
+        find_library(EF_FFMPEG_${_ef_ffmpeg_upper}_LIBRARY NAMES "${_ef_ffmpeg_lib}"
+            HINTS "${EF_FFMPEG_ROOT}/lib" "${EF_FFMPEG_ROOT}/lib/x86_64-linux-gnu")
+    endforeach()
+    set(EF_FFMPEG_FOUND OFF)
+    if(EF_FFMPEG_INCLUDE_DIR AND EF_FFMPEG_AVCODEC_LIBRARY AND EF_FFMPEG_AVFORMAT_LIBRARY
+       AND EF_FFMPEG_AVUTIL_LIBRARY AND EF_FFMPEG_SWSCALE_LIBRARY AND EF_FFMPEG_SWRESAMPLE_LIBRARY)
+        set(EF_FFMPEG_FOUND ON)
+    endif()
 endif()

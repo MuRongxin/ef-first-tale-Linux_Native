@@ -22,7 +22,7 @@
   缺失 0、**歧义 0**（原 19）、包内丢失 0，退出码 0。
 - r18 仅覆盖对应基础归档类别属于移植版显式策略（与归档打开顺序一致），仍不能表述为本轮新取得的"运行期覆盖"证据。
 
-**已取证：`.movie`（2026-10-26，实现待 FFmpeg 开发包）**：
+**已取证并实现：`.movie`（2026-10-26）**：
 - `CommandMovie`：命令名 `0x578588`、注册 `0x4cb3c8`、对象 0x78、构造 `0x4ec7b0`、Parse `0x4ec3a0`、Execute `0x4ec850`。
   参数至少 4 个：`<id> <file> [w] [h] [flag] [x] [y]`；默认 w=800/h=600、flag=true、x=y=0；
   flag 首字符 `0/f/F` 为 false，其余/缺省 true；`id` 解析保存但 Execute 不读取。
@@ -32,9 +32,10 @@
   Video Renderer/Sound Renderer/VMR7`，音频 48000）。
 - 阻塞：movie active 时主循环（`0x4bf368` 起）调用 `0x4fc3b0` 绘制并暂停脚本；`0x4fc9e0` 为播放/消息循环，
   播完 `0x4fc750` 释放。flag≠0 时中断输入会写配置键 `movieInterrupted` 后停止（=可跳过），flag=0 跳过该分支（不可跳过）。
-- 实现方案与依赖：content 已有 4 个视频（`mov/op_logo.mpg` 等，H.264 MKV 3840×2880）；
-  移植需 FFmpeg 开发包（libavcodec/format/util/swscale/swresample-dev；本机仅运行库），
-  解码→纹理按 `(x,y,w,h)` 绘制、音频送现有 mixer；先做命令/阻塞状态机，再接视频管线。详见 `MOVIE-20261026.md`。
+- 实现：content 已有 4 个视频（`mov/op_logo.mpg` 等，H.264 MKV 3840×2880）；移植用 FFmpeg 解码→RGBA
+  纹理按 `(x,y,w,h)` 绘制、音频重采样 48 kHz 送现有 SDL 输出；`.movie` 阻塞状态由 Presentation
+  记录请求、Application 逐帧驱动，可跳过影片按键/左键结束；FFmpeg 开发包缺失时严格未支持。
+  详见 `MOVIE-20261026.md`。
 - 残余：flag 动态按键验证、`.movie2`、`id` 其它用途、DirectShow 渲染细节、`movieInterrupted` 的存档作用。
 
 **已知线索**（本目录 exe，PE32 i386）：

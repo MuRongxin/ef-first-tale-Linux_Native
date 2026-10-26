@@ -41,6 +41,9 @@ public:
                float progress, std::uint64_t revision, AssetTier tier, const std::string& mask = {},int transition_type = 0,
                const std::function<void(const Layer&)>& text = {});
     void shake(const ShakeFrame& frame,std::uint64_t serial);
+    // Opaque movie frame: the native player clears the stage and draws the video into
+    // the requested design-space rectangle. Pixels are top-down RGBA at scale 1.
+    void movie(const std::uint8_t* rgba, int width, int height, int x, int y, int w, int h);
     void clear_cache();
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:
@@ -73,6 +76,8 @@ private:
     GLint overlay_uniform_{},overlay_map_uniform_{};
     int max_texture_size_{};
     Texture white_;
+    GLuint movie_texture_{};
+    int movie_width_{}, movie_height_{};
     Target previous_target_, current_target_;
     Target transition_history_,transition_next_;
     bool transition_history_valid_{};

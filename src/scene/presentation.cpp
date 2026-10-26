@@ -108,7 +108,7 @@ float Presentation::progress() const {
     const double step=std::floor(ticks*active_speed_/10);
     return static_cast<float>(std::min(1.0,step/transition_completion(active_type_)));
 }
-bool Presentation::busy() const { return shaking() || fading_ || (wait_scroll_ && scroll_.has_value()); }
+bool Presentation::busy() const { return movie_active_ || shaking() || fading_ || (wait_scroll_ && scroll_.has_value()); }
 void Presentation::update(double seconds) {
     if (!std::isfinite(seconds) || seconds < 0) throw std::runtime_error("Invalid presentation delta time");
     finder_ticks_=std::min(3599900.0,finder_ticks_+seconds*100);
@@ -133,6 +133,32 @@ bool Presentation::command(const Instruction& instruction) {
     const auto& cmd = instruction.command;
     const auto& args = instruction.args;
     const bool r18 = instruction.script.starts_with("r18_scr/");
+    if (cmd == ".movie") {
+        count(instruction, 4, 7);
+        if (!movie_supported_) throw std::runtime_error(".movie requires FFmpeg movie playback support");
+        MovieRequest request;
+        request.id = number(args[0]);
+        const auto& resource = content_.resource("video", args[1], r18);
+        request.asset = resource.id;
+        request.path = resource.path;
+        request.width = args.size() > 2 ? number(args[2]) : 800;
+        request.height = args.size() > 3 ? number(args[3]) : 600;
+        if (request.width <= 0 || request.height <= 0 || request.width > 8192 || request.height > 8192)
+            throw std::runtime_error(".movie destination rectangle is out of range");
+        const std::string flag = args.size() > 4 ? args[4] : std::string{};
+        request.skippable = flag.empty() || !(flag[0] == '0' || flag[0] == 'f' || flag[0] == 'F');
+        request.x = args.size() > 5 ? number(args[5]) : 0;
+        request.y = args.size() > 6 ? number(args[6]) : 0;
+        // The native player clears the current scene before handing the screen to the
+        // video renderer (0x4db670 -> 0x4d7e00/0x4d7f00/0x4d8d20).
+        previous_.clear(); current_.clear(); transition_frame_.clear();
+        fading_ = false; scroll_.reset(); wait_scroll_ = false;
+        snow_.reset(); cutin_.reset(); shake_.reset();
+        screens_ = {}; overlays_ = {}; hsv_ = {};
+        movie_request_ = std::move(request);
+        movie_active_ = true;
+        return true;
+    }
     if (cmd == ".frame") {
         count(instruction,1,1);
         std::optional<Layer> next;

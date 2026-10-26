@@ -273,6 +273,7 @@ void main() {
     } catch (...) { cleanup(); throw; }
 }
 void Renderer::cleanup() {
+    if (movie_texture_) { glDeleteTextures(1, &movie_texture_); movie_texture_ = 0; movie_width_ = movie_height_ = 0; }
     transition_history_.reset();transition_next_.reset();
     shake_source_.reset(); shake_history_.reset(); shake_next_.reset();
     if (shake_program_) glDeleteProgram(shake_program_);
@@ -533,6 +534,30 @@ void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
         uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
     }
     quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map,layer.hsv,0,0,0,0,{},layer.trim_bottom ? static_cast<float>(material_height)/static_cast<float>(design.height) : 0);
+}
+void Renderer::movie(const std::uint8_t* rgba,int width,int height,int x,int y,int w,int h) {
+    if (!rgba || width <= 0 || height <= 0 || w <= 0 || h <= 0)
+        throw std::runtime_error("Invalid movie frame");
+    if (!movie_texture_) glGenTextures(1, &movie_texture_);
+    glBindTexture(GL_TEXTURE_2D, movie_texture_);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (movie_width_ != width || movie_height_ != height) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+        movie_width_ = width;
+        movie_height_ = height;
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    }
+    glDisable(GL_BLEND);
+    quad(white_, 0, 0, 800, 600, {0,0,0,1});
+    quad_id(movie_texture_, static_cast<float>(x), static_cast<float>(y),
+        static_cast<float>(w), static_cast<float>(h), {1,1,1,1}, false);
+    glEnable(GL_BLEND);
+    checked_gl("Draw movie frame");
 }
 void Renderer::shake(const ShakeFrame& frame,std::uint64_t serial) {
     if (!std::isfinite(frame.x) || !std::isfinite(frame.y) || !std::isfinite(frame.crop) ||

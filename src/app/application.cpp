@@ -6,6 +6,9 @@
 #include "render/renderer.hpp"
 #include "scene/scene.hpp"
 #include "text/font.hpp"
+#ifdef EF_HAS_FFMPEG
+#include "video/movie_player.hpp"
+#endif
 #include <SDL3/SDL.h>
 #include <memory>
 #include <cmath>
@@ -159,7 +162,14 @@ int run(const Options& options) {
     if (script && !options.text_preview) {
         audio = std::make_unique<AudioOutput>(script->presentation().mixer(), !options.silent);
         script->presentation().realtime_audio(audio->active());
+#ifdef EF_HAS_FFMPEG
+        script->presentation().set_movie_supported(true);
+#endif
     }
+#ifdef EF_HAS_FFMPEG
+    std::unique_ptr<MoviePlayer> movie;
+    std::uint64_t movie_started{};
+#endif
     bool running = true;
     int frames = 0;
     int smoke_phase = 0;
@@ -173,6 +183,16 @@ int run(const Options& options) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
+#ifdef EF_HAS_FFMPEG
+            if (movie && script && script->presentation().movie_active()) {
+                const bool click = event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT;
+                const bool key = event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+                    event.key.key != SDLK_F10 && event.key.key != SDLK_F11;
+                if ((click || key) && script->presentation().movie_request() && script->presentation().movie_request()->skippable)
+                    movie->skip();
+                if (click || key) continue; // the movie owns input while it is on screen
+            }
+#endif
             if (script && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT) {
                 int ww{}, wh{}, pw{}, ph{};
                 checked(SDL_GetWindowSize(window.handle, &ww, &wh), "Window input size");
@@ -268,6 +288,29 @@ int run(const Options& options) {
             for (int i = 0; i < steps; ++i) script->update(FixedStep::interval);
             scene = script->scene();
         }
+#ifdef EF_HAS_FFMPEG
+        if (script && !options.text_preview) {
+            auto& presentation = script->presentation();
+            if (presentation.movie_active()) {
+                const auto& request = *presentation.movie_request();
+                if (!movie) {
+                    movie = std::make_unique<MoviePlayer>(content.resolve(request.path), request.width, request.height, audio ? audio.get() : nullptr);
+                    movie_started = SDL_GetTicksNS();
+                    std::cerr << "[movie] start " << request.asset << " " << request.width << "x" << request.height << "\n";
+                }
+                const auto now = SDL_GetTicksNS();
+                const double delta = movie_started == 0 ? 0.0 : static_cast<double>(now - movie_started) / 1e9;
+                movie_started = now;
+                movie->update(delta);
+                if (movie->finished()) {
+                    const std::string asset = request.asset;
+                    presentation.finish_movie();
+                    movie.reset();
+                    std::cerr << "[movie] finished " << asset << "\n";
+                }
+            } else if (movie) movie.reset();
+        }
+#endif
         int width{}, height{};
         checked(SDL_GetWindowSizeInPixels(window.handle, &width, &height), "Framebuffer size");
         const auto view = fit_viewport(width, height);
@@ -276,43 +319,55 @@ int run(const Options& options) {
         auto rendered_scene=scene;
         font->style(rendered_scene);
         font->fit_messages(rendered_scene,view.scale());
-        renderer.begin(width, height, view, scene.background);
-        if (script && !options.text_preview) {
-            const auto& stage = script->presentation();
-            renderer.stage(content, stage.previous(), stage.current(), stage.progress(), stage.revision(), tier, stage.transition_mask(),stage.transition_type(),
-                [&](const Layer& layer) { font->draw(renderer,layer,view.scale()); });
+        bool movie_drawn = false;
+#ifdef EF_HAS_FFMPEG
+        if (movie && script && script->presentation().movie_active() && !movie->rgba().empty()) {
+            const auto& request = *script->presentation().movie_request();
+            renderer.begin(width, height, view, scene.background);
+            renderer.movie(movie->rgba().data(), movie->width(), movie->height(),
+                request.x, request.y, request.width, request.height);
+            movie_drawn = true;
         }
-        for (const auto& layer : rendered_scene.layers) {
-            switch (layer.kind) {
-            case LayerKind::image: renderer.image(content, layer, tier); break;
-            case LayerKind::rectangle: renderer.rectangle(layer); break;
-            case LayerKind::text: {
-                const auto drawn=font->draw(renderer,layer,view.scale());
-                if (layer.advance_marker) {
-                    const auto& marker=*layer.advance_marker;
-                    Layer sprite; sprite.kind=LayerKind::image; sprite.asset=marker.asset;
-                    sprite.width=sprite.height=static_cast<float>(marker.frame_size);
-                    sprite.x=std::floor((drawn.cursor.x+5)/2)*2;
-                    sprite.y=drawn.cursor.y+drawn.line_height-sprite.height+2;
-                    sprite.source=std::array<float,4>{static_cast<float>(marker.frame*marker.frame_size),0,sprite.width,sprite.height};
-                    renderer.image(content,sprite,tier);
+#endif
+        if (!movie_drawn) {
+            renderer.begin(width, height, view, scene.background);
+            if (script && !options.text_preview) {
+                const auto& stage = script->presentation();
+                renderer.stage(content, stage.previous(), stage.current(), stage.progress(), stage.revision(), tier, stage.transition_mask(),stage.transition_type(),
+                    [&](const Layer& layer) { font->draw(renderer,layer,view.scale()); });
+            }
+            for (const auto& layer : rendered_scene.layers) {
+                switch (layer.kind) {
+                case LayerKind::image: renderer.image(content, layer, tier); break;
+                case LayerKind::rectangle: renderer.rectangle(layer); break;
+                case LayerKind::text: {
+                    const auto drawn=font->draw(renderer,layer,view.scale());
+                    if (layer.advance_marker) {
+                        const auto& marker=*layer.advance_marker;
+                        Layer sprite; sprite.kind=LayerKind::image; sprite.asset=marker.asset;
+                        sprite.width=sprite.height=static_cast<float>(marker.frame_size);
+                        sprite.x=std::floor((drawn.cursor.x+5)/2)*2;
+                        sprite.y=drawn.cursor.y+drawn.line_height-sprite.height+2;
+                        sprite.source=std::array<float,4>{static_cast<float>(marker.frame*marker.frame_size),0,sprite.width,sprite.height};
+                        renderer.image(content,sprite,tier);
+                    }
+                    break;
                 }
-                break;
+                }
             }
+            if (script && !options.text_preview && script->presentation().shaking())
+                renderer.shake(script->presentation().shake_frame(),script->presentation().shake_serial());
+            if (SDL_GetTicks()<font_notice_until) {
+                Layer background; background.kind=LayerKind::rectangle;
+                background.x=10; background.y=10; background.width=780; background.height=84;
+                background.color={0,0,0,0.9f}; renderer.rectangle(background);
+                Layer notice; notice.kind=LayerKind::text; notice.x=20; notice.y=16; notice.width=760; notice.font_size=18;
+                notice.text=font_notice_error ? "字体无法使用，已保留之前的设置。" :
+                    "字号 "+std::to_string(std::lround(font_settings.scale*100))+"%   字面 "+std::to_string(font_settings.face)+"   F5 切换外观   F6 切换字面";
+                notice.text+="\nF7/F8 调整字号   F9 恢复默认   拖入字体文件即可应用。";
+                notice.text+=font_notice_saved ? "\n有效设置已自动保存。" : "\n当前预览已生效，但配置保存失败，请检查配置目录。";
+                font->draw(renderer,notice,view.scale());
             }
-        }
-        if (script && !options.text_preview && script->presentation().shaking())
-            renderer.shake(script->presentation().shake_frame(),script->presentation().shake_serial());
-        if (SDL_GetTicks()<font_notice_until) {
-            Layer background; background.kind=LayerKind::rectangle;
-            background.x=10; background.y=10; background.width=780; background.height=84;
-            background.color={0,0,0,0.9f}; renderer.rectangle(background);
-            Layer notice; notice.kind=LayerKind::text; notice.x=20; notice.y=16; notice.width=760; notice.font_size=18;
-            notice.text=font_notice_error ? "字体无法使用，已保留之前的设置。" :
-                "字号 "+std::to_string(std::lround(font_settings.scale*100))+"%   字面 "+std::to_string(font_settings.face)+"   F5 切换外观   F6 切换字面";
-            notice.text+="\nF7/F8 调整字号   F9 恢复默认   拖入字体文件即可应用。";
-            notice.text+=font_notice_saved ? "\n有效设置已自动保存。" : "\n当前预览已生效，但配置保存失败，请检查配置目录。";
-            font->draw(renderer,notice,view.scale());
         }
         ++frames;
         bool finished = options.frames > 0 && frames >= options.frames;

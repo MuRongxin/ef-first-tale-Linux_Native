@@ -16,12 +16,15 @@ sudo apt-get install build-essential cmake ninja-build pkg-config \
     libasound2-dev libpipewire-0.3-dev libspa-0.2-dev libpulse-dev \
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev \
     libwayland-dev libxkbcommon-dev libdecor-0-dev \
-    python3-pil python3-numpy python3-pycryptodome fontconfig fonts-noto-cjk fonts-dejavu-core ffmpeg
+    python3-pil python3-numpy python3-pycryptodome fontconfig fonts-noto-cjk fonts-dejavu-core ffmpeg \
+    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev
 cmake --preset dev
 cmake --build --preset dev
 ```
 
 音频使用 stb_vorbis 解码 OGG，支持原版 WAV；缺少系统 stb 时下载固定提交并校验哈希。
+`.movie` 视频播放还需要 FFmpeg 开发包（`libavcodec-dev libavformat-dev libavutil-dev
+libswscale-dev libswresample-dev`）；缺少时其余功能正常，`.movie` 保持严格“未支持”诊断。
 优先使用系统 SDL3 ≥3.4.18、libwebp ≥1.3、nlohmann_json ≥3.11；
 缺少时下载固定版本并校验 SHA-256。安装了符合版本要求的依赖后，可以使用
 `-DEF_FETCH_DEPENDENCIES=OFF` 禁用下载。`release` 预设用于发布构建。

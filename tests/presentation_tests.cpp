@@ -41,7 +41,10 @@ int main() {
             const std::string id=std::string(kind)+"/other";
             catalog["entries"][id]={{"kind",kind},{"name","other"},{"tag",kind},{"source_sha256",std::string(64,'b')},{"path","tone.ogg"}};
         }
+        catalog["entries"]["mov/sample.avi"] = {{"kind","video"},{"name","sample.avi"},{"tag","mov"},
+            {"source_sha256",std::string(64,'d')},{"path","sample.avi"}};
         std::filesystem::copy_file(EF_AUDIO_FIXTURE,temp.path/"tone.ogg");
+        std::ofstream(temp.path/"sample.avi") << "movie fixture";
         std::ofstream(temp.path/"manifest.json") << manifest.dump();
         std::ofstream(temp.path/"catalog.json") << catalog.dump();
         Content content(temp.path);
@@ -263,7 +266,29 @@ int main() {
         require(!command(".effect Unknown * 60 -2\n"),"Unknown multi-argument effect was swallowed");
         rejects([&] { command(".effect Cutin mask.png bad\n"); });
         rejects([&] { command(".effect WScroll2 * 0 -2\n"); });
-        std::cout << "Presentation tests PASS: scene placement, crossfade, scroll waits, panel, voiced messages and audio commands\n";
+        // .movie: native parser defaults, skippable flag, blocking state and the
+        // host-side completion handshake (decoding lives in the application target).
+        stage.set_movie_supported(true);
+        require(command(".movie 10000 sample.avi 800 600 t\n"), "Movie command must be handled");
+        require(stage.movie_active() && stage.busy(), "Movie playback must block the script");
+        require(stage.movie_request() && stage.movie_request()->asset=="mov/sample.avi" &&
+            stage.movie_request()->width==800 && stage.movie_request()->height==600 &&
+            stage.movie_request()->x==0 && stage.movie_request()->y==0 &&
+            stage.movie_request()->skippable, "Movie defaults/asset resolution");
+        require(stage.current().empty() && stage.previous().empty(), "Movie start must clear the stage");
+        stage.finish_movie();
+        require(!stage.movie_active() && !stage.busy() && !stage.movie_request(), "Movie completion must resume the script");
+        require(command(".movie 0 sample.avi 640 480 f 12 34\n"), "Movie with explicit flag/x/y");
+        require(stage.movie_request()->width==640 && stage.movie_request()->height==480 &&
+            stage.movie_request()->x==12 && stage.movie_request()->y==34 &&
+            !stage.movie_request()->skippable, "Movie argument order and unskippable flag");
+        stage.finish_movie();
+        rejects([&] { command(".movie 0 sample.avi 800\n"); });
+        rejects([&] { command(".movie 0 sample.avi 0 600 t\n"); });
+        rejects([&] { command(".movie 0 missing.avi 800 600 t\n"); });
+        Presentation no_movies(content);
+        rejects([&] { const auto i = parse_script(".movie 0 sample.avi 800 600 t\n", "scr/test.sc").at(0); no_movies.command(i); });
+        std::cout << "Presentation tests PASS: scene placement, crossfade, scroll waits, panel, voiced messages, movie state and audio commands\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

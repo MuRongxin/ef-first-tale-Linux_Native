@@ -14,7 +14,7 @@
 | Cutin / WScroll2 / effect end | [切入与步行](CUTIN-WALKING-20261026.md) | 运动阶段、时钟、循环、远近差、遮挡顺序；步行其他配置路径和原版逐帧对照未完成 |
 | 特殊转场 type2/14/16/17 | [特殊转场](SPECIAL-TRANSITION-20261026.md) | 用户已提交并通过复核；speed>255即时完成，type2采样与采样精度限制见专题 |
 | frame / finderCounter | [取景器](FRAME-AUDIT-20261026.md) | 下一stage生效，943000层序，H/MM/SS、电量阈值与变量时钟回写已实现；数字外形和原版逐帧对照待校准 |
-| `.movie` / `.movie2` | [movie 取证](MOVIE-20261026.md) | 参数/默认值/阻塞与 DirectShow 播放链已确认；flag=可中断/跳过推断；移植实现依赖 FFmpeg 开发包 |
+| `.movie` / `.movie2` | [movie 取证与实现](MOVIE-20261026.md) | 参数/默认值/阻塞与 DirectShow 播放链已确认；flag=可中断/跳过推断；移植已实现 FFmpeg 播放（开发包可选），`.movie2` 未实现 |
 | 全角分号制作备注 | [解析器补证](CUTIN-WALKING-20261026.md) | 原版无指令路径；移植仅兼容该类备注，其他未知输入保持严格报错 |
 
 专题记录保留观察、推断、移植选择和未知项，并链接原版函数/REA Evidence ID及验证结果。原始证据在本地 `work/re/evidence/` 与导出证据包中。`AGENTS.md` 记录交接进度；[剩余问题](06-RE-ROADMAP.md)集中跟踪未完成范围。
@@ -61,7 +61,7 @@ RTTI 枚举（exe 字符串 `. ?AVCommand*`）：Base, Comment, Stage, Message, 
 | `.endScroll` | `<f|t>` (48) | 结束滚动状态。I |
 | `.shakeScreen` | `<mode> <amp:int> <ticks:int>` (17) | 阻塞震屏，ticks为10ms单位；R/数字默认为四向平移，H/V交替，Z裁切放大交替，O旋转叠影。T/负时长未实现。O（2026-10-26 REA） |
 | `.HSVfilter` | `<bg_h> <bg_s> <bg_v> <fg_h> <fg_s> <fg_v>` (19) | 下一stage背景/前景定点调色，边框不受影响；h存储但原像素函数不使用，s/v钳制±100；全零清除。O（2026-10-26 REA） |
-| `.movie` | `<id> <file> [w] [h] [flag] [x] [y]` (8) | 阻塞式视频播放：从 mov.paz 读取，按扩展名走 DirectShow（MPEG/AVI）；默认 w=800,h=600、flag=true（可中断/跳过）、x=y=0；`id` 解析但不参与播放；播放期间脚本暂停。O（2026-10-26 反汇编，见 MOVIE-20261026.md；移植未实现） |
+| `.movie` | `<id> <file> [w] [h] [flag] [x] [y]` (8) | 阻塞式视频播放：原版从 mov.paz 读取、按扩展名走 DirectShow（MPEG/AVI）；默认 w=800,h=600、flag=true（可中断/跳过）、x=y=0；`id` 解析但不参与播放；播放期间脚本暂停。O（2026-10-26 反汇编+移植实现，见 MOVIE-20261026.md；移植用 FFmpeg，开发包缺失时严格未支持） |
 | `.movie2` | —（未见） | 视频变体。U |
 | `.playBGM` | `<file|*> [fade_in_speed] [fade_out_speed] [volume_percent]` (427) | 播放/停止 BGM；`*`=停止，`0 *` 是立即淡入和淡出速度占位，不能解释为静音。O（2026-10-25 REA） |
 | `.playVoice` | `<voiceID|*>` (12) | 播放语音（`*`=停止）。I |

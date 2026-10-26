@@ -9,6 +9,12 @@
 #include <optional>
 
 namespace ef {
+// One .movie request; the application owns the decoder while the script host waits.
+struct MovieRequest {
+    std::string asset, path;
+    int id{}, width{800}, height{600}, x{}, y{};
+    bool skippable{true};
+};
 // Development scene host. Unsupported effects remain strict script errors.
 class Presentation {
 public:
@@ -33,6 +39,12 @@ public:
     const std::string& transition_mask() const { return active_mask_; }
     AudioMixer& mixer() { return mixer_; }
     void realtime_audio(bool enabled) { realtime_ = enabled; }
+    // Movie decoding lives in the application (FFmpeg); presentation only records the
+    // request and blocks the script until the host reports completion.
+    void set_movie_supported(bool supported) { movie_supported_ = supported; }
+    [[nodiscard]] bool movie_active() const { return movie_active_; }
+    [[nodiscard]] const std::optional<MovieRequest>& movie_request() const { return movie_request_; }
+    void finish_movie() { movie_active_ = false; movie_request_.reset(); }
 private:
     void stop_walking();
     std::vector<Layer> frame_layers() const;
@@ -61,6 +73,8 @@ private:
     std::array<std::array<int,3>,2> hsv_{};
     double elapsed_{};
     bool fading_{};
+    bool movie_supported_{}, movie_active_{};
+    std::optional<MovieRequest> movie_request_;
     struct Scroll { std::size_t layer; float x, y, target_x, target_y; double elapsed{}, speed{}; };
     std::optional<Scroll> scroll_;
     bool wait_scroll_{};

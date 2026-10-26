@@ -6,7 +6,7 @@
 
 ## 1. 当前 HEAD 与工作区
 
-- 最新提交：`dbaa84d feat: 实现取景器计时、电量与舞台快照`（含 `.frame`/取景器实现）；上一基线 `ce35020 feat: 按原版优先级解析 bg/st 同名立绘`。docs/ 已随文档提交入库；`AGENTS.md` 仍为本地协作说明不提交，`assets/`、`work/`、`analysis/`、`content/` 继续不入库。`.frame` 语料范围现已实现，计时/电量/转场快照与测试记录见 [FRAME-AUDIT-20261026.md](FRAME-AUDIT-20261026.md)；下一步继续 `.stage` 逗号位置参数。
+- 最新提交：本次 `.movie` 阻塞式视频播放实现（FFmpeg 开发包可选；见 [MOVIE-20261026.md](MOVIE-20261026.md)）；此前 `13499a7 feat: 支持舞台立绘底部裁切与整数居中`、`dbaa84d feat: 实现取景器计时、电量与舞台快照`（含 `.frame`/取景器），资源优先级基线 `ce35020`。docs/ 已随文档提交入库；`AGENTS.md` 仍为本地协作说明不提交，`assets/`、`work/`、`analysis/`、`content/` 继续不入库。工作区另有用户未提交的 `.shakeScreen` 分支 WIP，勿混入本快照。
 - 近期提交（2026-10-25/26，尾部）：
   - `06ca3da` 接通基础场景演出与原版音频播放
   - `a6ebf06` 全屏文本续写与分组清页
@@ -18,7 +18,7 @@
   - `aba8c78` 转场计数器统一整数步进并标注采样依据
   - `3004b44` speed>255 转场对所有类型立即完成
   - `ce35020` 按原版优先级解析 bg/st 同名立绘
-- 本机 `build/dev` 自动测试当前 **25/25 PASS**，core ASan **18/18 PASS**；最近实现记录文档：
+- 本机 `build/dev` 自动测试当前 **26/26 PASS**，core ASan **18/18 PASS**；接入 FFmpeg 开发包的构建为 **27/27**（额外 `movie_decode` 解码冒烟）；最近实现记录文档：
   `RUNTIME-STAGE-AUDIO-20261025.md`、`MESSAGE-UI-20261025.md`、`PANEL-TRANSITION-20261025.md`、`NVL-FLOW-20261025.md`、`AUDIO-CROSSFADE-20261026.md`、`SCREEN-20261026.md`、`SHAKE-OVERLAY-20261026.md`、`HSV-MASK-20261026.md`、`CUTIN-WALKING-20261026.md`、`SPECIAL-TRANSITION-20261026.md`、`MOVIE-20261026.md`（文档已纳入 docs/；原始证据与运行产物不入库）。
 
 ## 2. 里程碑状态
@@ -29,7 +29,7 @@
 | M0 图像解包 + HD 清单 | ✅ 完成 | 5,989 文件 / 1,869.8 MB；独立验证 PASS |
 | HD 4×/8× 超分（远端 P40） | ✅ 全量完成 | 6,250 文件 / ~35 GB（磁盘 36 GB）；尺寸校验 6,224 OK，本地/远端 SHA-256 一致 |
 | M1 原生框架 + content 数据层 | ✅ 完成 | SDL3/OpenGL/FreeType、content v1、PNG/WebP 解码、4×/8× 窗口档位、`--validate-content/--audit-scripts/--audit-resources` |
-| M2 剧本解释器 + 场景运行时 | 🟨 进行中（主体已落地） | 已提交：控制流/文字校阅、基础 `.stage` 演出、开场雪花、原版音频播放（stb_vorbis + 四通道 mixer + 交叠淡化 + SDL 输出）、消息窗模式 1/2/3、全屏续写、文字描边/阴影/自定义字体、`.panel` 交叠切换、`.screen` 色带滤色、`.shakeScreen`/`.overlay`、`.HSVfilter`、`.transition` type0/1/2/14/16/17、`.effect` Cutin/WScroll2/end、bg/st 同名立绘优先级；剩余：`.frame`、`.stage` 逗号位置注解、转场 type3..13/15/18、`.movie` 等 |
+| M2 剧本解释器 + 场景运行时 | 🟨 进行中（主体已落地） | 已提交：控制流/文字校阅、基础 `.stage` 演出、开场雪花、原版音频播放（stb_vorbis + 四通道 mixer + 交叠淡化 + SDL 输出）、消息窗模式 1/2/3、全屏续写、文字描边/阴影/自定义字体、`.panel` 交叠切换、`.screen` 色带滤色、`.shakeScreen`/`.overlay`、`.HSVfilter`、`.transition` type0/1/2/14/16/17、`.effect` Cutin/WScroll2/end、bg/st 同名立绘优先级、`.frame`、`.stage` 逗号位置注解、`.movie`（FFmpeg 可选依赖）；剩余：转场 type3..13/15/18、`.movie2` 与未用指令、保真收尾等 |
 | M3 流程/UI/存档 | 🟨 部分 | 消息窗/文字系统已实现；**完整 UI 复刻**（标题/设置/存读档/回想/图鉴/音乐/确认框/字体选择）与存档未开始 |
 | M4 保真收尾 | ⬜ 未开始 | `.ani` 动画、视频播放、图鉴/音乐鉴赏、KTX2 缓存 |
 
@@ -52,12 +52,13 @@
 - 图像：PNG/WebP 解码、`design_size` 映射、物理像素视口/留黑、分层 `screen` 滤色（原生整数公式 + 底对齐色带采样）；
 - 文字：FreeType 实际像素字形（Noto Sans CJK TTC face 可配置）、自定义/回退字体、描边与阴影、基线偏移、CJK 禁则、预排版 + 逐码点揭示、全屏续写/分组清页；
 - 消息窗：模式 1/2/3 几何与姓名规则、长消息上移、推进条 12 帧、面板交叠切换（约 160 ms 原版时钟）；
+- 影片：`.movie` 阻塞播放（FFmpeg 解码→纹理按目标矩形绘制、音频混入 SDL 输出、可跳过影片按键/左键结束）；`opening.sc` / `movie.sc` 真实素材验证；FFmpeg 开发包缺失时严格未支持；
 - 演出/音频：基础 `.stage`（背景/裁切/前景底对齐）、开场雪花、BGM/SE/SE2/voice 播放、跨曲交叠淡化与退场声部、`.shakeScreen`/`.overlay`/`.HSVfilter`、`.transition` type0/1/2/14/16/17（含 200 项缩放表叠影历史帧）、`.effect` Cutin/WScroll2/end；
 - 自动化：ctest 25/25（含音频/合成/转场像素回归）、core ASan 18/18 通过；Xvfb 渲染/键盘/EGL 检查 PASS；真实素材 4×→8×→4× 与 100 条消息追踪 PASS；e/j 开场严格 trace 1694 消息基线无回归，8 个转场脚本 24/30 点位真实执行通过。
 
 ## 5. 下一步建议（按依赖顺序）
 
-1. **补齐演出命令**：`.frame`（已提交 `dbaa84d`）→ `.stage` 逗号位置注解 token（用户实现中，如 `600,75`，34 行/4 脚本）→ **`.movie`（已取证，见 MOVIE-20261026.md；实现待 FFmpeg 开发包：先做解析/阻塞状态机，再接视频管线）**；再按 `SPECIAL-TRANSITION-20261026.md` 扩 type3..13/15/18；已实现的 `.transition` type0/1/2/14/16/17 只需原版逐帧对拍收尾；bg/st 同名立绘优先级已解决（st 优先、bg 回退，审计歧义归零）；
+1. **补齐演出命令**：`.frame`（`dbaa84d`）、`.stage` 逗号位置注解、**`.movie`（已实现，FFmpeg 可选依赖，见 MOVIE-20261026.md）** 均已完成；下一步按 `SPECIAL-TRANSITION-20261026.md` 扩 type3..13/15/18；已实现的 `.transition` type0/1/2/14/16/17 只需原版逐帧对拍收尾；bg/st 同名立绘优先级已解决（st 优先、bg 回退，审计歧义归零）；`.movie2` 与未用指令类待取证；
 2. **完整 UI 复刻（M3，全部 UI）**：按已逆向的消息窗经验，逐屏逆向标题/设置/存读档/回想/图鉴/音乐/确认框/字体选择；UI 图 AI 超分 + **去烧死文字**，文字全部 FreeType 重绘；
 3. **`.ani` 动画（M4 前置）**：逆向内部帧结构 → PNG 序列 + `anim.json` + 引擎播放器（坐标随配对 PNG 倍率缩放）；
 4. **视频播放**（H.264 已在 content 中）与 **KTX2 缓存**（方案 A：WebP 分发 + 首次/后台转码）；
