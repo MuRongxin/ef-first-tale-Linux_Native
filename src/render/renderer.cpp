@@ -146,8 +146,22 @@ void main() {
 in vec2 uv;
 uniform sampler2D image;
 uniform vec4 color;
+uniform sampler2D screen_image;
+uniform int screen_enabled;
+uniform vec4 screen_map;
 out vec4 output_color;
-void main() { output_color = texture(image, uv) * color; }
+void main() {
+    vec4 source = texture(image, uv);
+    if (screen_enabled != 0) {
+        // Strip and source share their bottom edge; CLAMP_TO_EDGE repeats the first row above it.
+        float row = (uv.y * screen_map.y + screen_map.z) * screen_map.w;
+        vec3 strip = texture(screen_image, vec2(screen_map.x, row)).rgb;
+        vec3 a = floor(clamp(source.rgb, 0.0, 1.0) * 255.0 + 0.5);
+        vec3 b = floor(clamp(strip, 0.0, 1.0) * 255.0 + 0.5);
+        source.rgb = (254.0 - floor((255.0-a)*(255.0-b)/256.0)) / 255.0;
+    }
+    output_color = source * color;
+}
 )";
         const auto vertex = shader(GL_VERTEX_SHADER, vertex_source);
         GLuint fragment{};
@@ -166,6 +180,8 @@ void main() { output_color = texture(image, uv) * color; }
         color_uniform_ = glGetUniformLocation(program_, "color");
         flip_uniform_ = glGetUniformLocation(program_, "flip_y");
         uv_uniform_ = glGetUniformLocation(program_, "uv_rect");
+        screen_uniform_=glGetUniformLocation(program_,"screen_enabled");
+        screen_map_uniform_=glGetUniformLocation(program_,"screen_map");
         constexpr float vertices[] = {0,0, 1,0, 0,1, 0,1, 1,0, 1,1};
         glGenVertexArrays(1, &vao_);
         glGenBuffers(1, &vbo_);
@@ -176,6 +192,7 @@ void main() { output_color = texture(image, uv) * color; }
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
         glUseProgram(program_);
         glUniform1i(glGetUniformLocation(program_, "image"), 0);
+        glUniform1i(glGetUniformLocation(program_, "screen_image"), 1);
         white_ = Texture(Image{1, 1, {255, 255, 255, 255}});
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -204,11 +221,17 @@ void Renderer::begin(int width, int height, Viewport view, Color background) {
 void Renderer::quad(const Texture& texture, float x, float y, float w, float h, Color color) {
     quad_id(texture.id(), x, y, w, h, color, false);
 }
-void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv) {
+void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map) {
     glUseProgram(program_);
     glBindVertexArray(vao_);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
+    glUniform1i(screen_uniform_,screen ? 1 : 0);
+    if (screen) {
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D,screen);
+        glUniform4fv(screen_map_uniform_,1,screen_map.data());
+        glActiveTexture(GL_TEXTURE0);
+    }
     glUniform4f(rect_uniform_, x, y, w, h);
     glUniform4fv(color_uniform_, 1, color.data());
     glUniform1i(flip_uniform_, flip_y ? 1 : 0);
@@ -217,9 +240,9 @@ void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color
 }
 void Renderer::rectangle(const Layer& layer) { quad(white_, layer.x, layer.y, layer.width, layer.height, layer.color); }
 void Renderer::clear_cache() {
-    cache_.clear();
-    cache_bytes_ = 0;
-    rejected_.clear();
+    cache_.clear(); strips_.clear();
+    cache_bytes_ = strip_bytes_ = 0;
+    rejected_.clear(); strip_rejected_.clear();
     reported_.clear();
     snapshot_valid_ = false;
     previous_target_.reset(); current_target_.reset();
@@ -283,54 +306,69 @@ void Renderer::stage(const Content& content, const std::vector<Layer>& previous,
     quad_id(current_target_.texture,0,0,800,600,{1,1,1,std::clamp(progress,0.0f,1.0f)},true);
     checked_gl("Blend complete stage scenes");
 }
-void Renderer::image(const Content& content, const Layer& layer, AssetTier tier) {
-    for (const auto& candidate : content.candidates(layer.asset, tier)) {
+Renderer::Entry& Renderer::texture(const Content& content,const std::string& asset,AssetTier tier,bool strip) {
+    auto& cache=strip ? strips_ : cache_;
+    auto& rejected=strip ? strip_rejected_ : rejected_;
+    auto& cache_bytes=strip ? strip_bytes_ : cache_bytes_;
+    const auto budget=strip ? strip_budget_ : budget_;
+    for (const auto& candidate : content.candidates(asset, tier)) {
         const auto path = content.resolve(candidate.path).string();
-        if (rejected_.contains(path)) continue;
-        auto found = cache_.find(path);
-        if (found == cache_.end()) {
+        if (rejected.contains(path)) continue;
+        auto found = cache.find(path);
+        if (found == cache.end()) {
             try {
                 const auto bytes = static_cast<std::size_t>(candidate.width) * static_cast<std::size_t>(candidate.height) * 4;
-                if (candidate.width > max_texture_size_ || candidate.height > max_texture_size_ || bytes > budget_)
-                    throw std::runtime_error("Image exceeds GPU texture limit or 256 MiB texture cache budget");
+                if (candidate.width > max_texture_size_ || candidate.height > max_texture_size_ || bytes > budget)
+                    throw std::runtime_error("Image exceeds GPU texture dimensions or cache budget");
                 const auto image = decode_image(path);
                 if (image.width != candidate.width || image.height != candidate.height)
                     throw std::runtime_error("Decoded dimensions do not match the content manifest");
-                while (cache_bytes_ + bytes > budget_ && !cache_.empty()) {
-                    const auto victim = std::min_element(cache_.begin(), cache_.end(), [](const auto& a, const auto& b) { return a.second.used < b.second.used; });
-                    cache_bytes_ -= victim->second.bytes;
-                    cache_.erase(victim);
+                while (cache_bytes + bytes > budget && !cache.empty()) {
+                    const auto victim = std::min_element(cache.begin(), cache.end(), [](const auto& a, const auto& b) { return a.second.used < b.second.used; });
+                    cache_bytes -= victim->second.bytes;
+                    cache.erase(victim);
                 }
-                found = cache_.emplace(path, Entry{Texture(image), bytes, ++clock_}).first;
-                cache_bytes_ += bytes;
+                found = cache.emplace(path, Entry{Texture(image), bytes, ++clock_}).first;
+                cache_bytes += bytes;
             } catch (const std::exception& e) {
-                rejected_.insert(path);
+                rejected.insert(path);
                 std::cerr << "[asset fallback] " << path << ": " << e.what() << '\n';
                 continue;
             }
         }
-        const auto report = layer.asset + ':' + std::to_string(static_cast<int>(tier));
+        const auto report = asset + ':' + std::to_string(static_cast<int>(tier));
         if (reported_.insert(report).second) {
-            std::cout << "asset " << layer.asset << " requested=" << static_cast<int>(tier)
+            std::cout << "asset " << asset << " requested=" << static_cast<int>(tier)
                       << " selected=" << candidate.tier << " pixels=" << candidate.width << 'x' << candidate.height
-                      << " design=" << layer.width << 'x' << layer.height << '\n';
-            if (candidate.tier != static_cast<int>(tier)) std::cerr << "[asset fallback] " << layer.asset << " uses tier " << candidate.tier << '\n';
+                      << " design=" << content.asset(asset).width << 'x' << content.asset(asset).height << '\n';
+            if (candidate.tier != static_cast<int>(tier)) std::cerr << "[asset fallback] " << asset << " uses tier " << candidate.tier << '\n';
         }
         found->second.used = ++clock_;
-        std::array<float,4> uv{0,0,1,1};
-        if (layer.source) {
-            const auto& asset = content.asset(layer.asset);
-            const auto& source = *layer.source;
-            if (!std::all_of(source.begin(),source.end(),[](float n) { return std::isfinite(n); }) ||
-                source[0]<0 || source[1]<0 || source[2]<=0 || source[3]<=0 ||
-                source[0]+source[2]>static_cast<float>(asset.width) || source[1]+source[3]>static_cast<float>(asset.height))
-                throw std::runtime_error("Image atlas region outside design canvas");
-            uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
-        }
-        quad_id(found->second.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv);
-        return;
+        return found->second;
     }
-    throw std::runtime_error("No usable image variant for " + layer.asset);
+    throw std::runtime_error("No usable image variant for " + asset);
+}
+void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
+    auto& primary=texture(content,layer.asset,tier);
+    GLuint screen{}; std::array<float,4> screen_map{};
+    if (!layer.screen.empty()) {
+        const auto& source=content.asset(layer.asset);
+        const auto& strip=content.asset(layer.screen);
+        screen=texture(content,layer.screen,tier,true).texture.id();
+        screen_map={0.5f/static_cast<float>(strip.width),static_cast<float>(source.height),
+                    static_cast<float>(strip.height-source.height),1.0f/static_cast<float>(strip.height)};
+    }
+    std::array<float,4> uv{0,0,1,1};
+    if (layer.source) {
+        const auto& asset = content.asset(layer.asset);
+        const auto& source = *layer.source;
+        if (!std::all_of(source.begin(),source.end(),[](float n) { return std::isfinite(n); }) ||
+            source[0]<0 || source[1]<0 || source[2]<=0 || source[3]<=0 ||
+            source[0]+source[2]>static_cast<float>(asset.width) || source[1]+source[3]>static_cast<float>(asset.height))
+            throw std::runtime_error("Image atlas region outside design canvas");
+        uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
+    }
+    quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map);
 }
 void Renderer::capture(const std::filesystem::path& path, int width, int height) const {
     if (width <= 0 || height <= 0) throw std::runtime_error("Cannot capture an empty framebuffer");

@@ -72,7 +72,14 @@ bool Presentation::command(const Instruction& instruction) {
     const auto& cmd = instruction.command;
     const auto& args = instruction.args;
     const bool r18 = instruction.script.starts_with("r18_scr/");
-    if (cmd == ".transition") {
+    if (cmd == ".screen") {
+        count(instruction,2,3);
+        std::array<std::string,3> next;
+        const std::size_t first=args.size()==2 ? 1 : 0;
+        for (std::size_t n=0; n<args.size(); ++n)
+            if (!args[n].empty() && args[n]!="*") next[first+n]=image(args[n],r18).asset;
+        screens_=std::move(next); // .screen updates pending state, never the displayed snapshots.
+    } else if (cmd == ".transition") {
         count(instruction,3,3);
         if (number(args[0]) != 0 || args[1] != "*" || number(args[2]) <= 0)
             throw std::runtime_error("Only unmasked type-0 crossfade with positive speed is implemented");
@@ -90,6 +97,7 @@ bool Presentation::command(const Instruction& instruction) {
         std::optional<std::size_t> background;
         if (args[cursor] != "*") {
             auto layer = image(args[cursor],r18);
+            layer.screen=screens_[1];
             layer.x = -std::clamp(static_cast<float>(number(args[cursor+1])),0.0f,std::max(0.0f,layer.width-800));
             layer.y = -std::clamp(static_cast<float>(number(args[cursor+2])),0.0f,std::max(0.0f,layer.height-600));
             background = next.size(); next.push_back(std::move(layer));
@@ -98,11 +106,13 @@ bool Presentation::command(const Instruction& instruction) {
             const int center = number(args[cursor+1]); // annotated placement flags deliberately rejected
             if (args[cursor] == "*") continue;
             auto layer = image(args[cursor],r18);
+            layer.screen=screens_[2];
             layer.x = static_cast<float>(center)-layer.width/2; layer.y = 600-layer.height;
             next.push_back(std::move(layer));
         }
         if (args[0] != "*") {
             auto layer = image(args[0],r18);
+            layer.screen=screens_[0];
             layer.x = static_cast<float>(frame_x); layer.y = static_cast<float>(frame_y);
             next.push_back(std::move(layer));
         }

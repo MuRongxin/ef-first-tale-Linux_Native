@@ -41,7 +41,7 @@ public:
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:
     void cleanup();
-    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1});
+    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {});
     void opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier);
     struct Target {
         GLuint framebuffer{}, texture{};
@@ -54,13 +54,16 @@ private:
         Target& operator=(const Target&) = delete;
     };
     struct Entry { Texture texture; std::size_t bytes{}; std::uint64_t used{}; };
-    std::map<std::string, Entry> cache_;
-    std::set<std::string> rejected_, reported_;
-    std::size_t cache_bytes_{};
+    Entry& texture(const Content& content,const std::string& asset,AssetTier tier,bool strip=false);
+    std::map<std::string, Entry> cache_,strips_;
+    std::set<std::string> rejected_,strip_rejected_,reported_;
+    std::size_t cache_bytes_{},strip_bytes_{};
+    static constexpr std::size_t strip_budget_=4ULL*1024*1024;
     std::uint64_t clock_{};
     static constexpr std::size_t budget_ = 256ULL * 1024 * 1024;
     GLuint program_{}, vao_{}, vbo_{};
     GLint rect_uniform_{}, color_uniform_{}, flip_uniform_{}, uv_uniform_{};
+    GLint screen_uniform_{},screen_map_uniform_{};
     int max_texture_size_{};
     Texture white_;
     Target previous_target_, current_target_;

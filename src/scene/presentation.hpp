@@ -43,5 +43,6 @@ private:
     std::optional<Scroll> scroll_;
     bool wait_scroll_{};
     std::optional<std::size_t> background_;
+    std::array<std::string,3> screens_; // pending frame/background/foreground materials
 };
 }

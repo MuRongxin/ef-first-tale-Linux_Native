@@ -27,6 +27,12 @@ int main() {
             manifest["images"][id] = {{"source_sha256",std::string(64,'a')},{"design_size",size},{"variants",{{"1",{{"path","unused.png"},{"pixels",size}}}}}};
             catalog["entries"][id] = {{"kind","image"},{"name",name},{"tag","bg"},{"source_sha256",std::string(64,'a')}};
         }
+        for (const auto* name : {"shade_a","shade_b","shade_c"}) {
+            const std::string id=std::string("sys/")+name;
+            manifest["images"][id]={{"source_sha256",std::string(64,'c')},{"design_size",{1,601}},
+                {"variants",{{"1",{{"path","unused-strip.png"},{"pixels",{1,601}}}}}}};
+            catalog["entries"][id]={{"kind","image"},{"name",name},{"tag","sys"},{"source_sha256",std::string(64,'c')}};
+        }
         for (const auto* kind : {"voice","bgm","se"}) {
             const std::string id = std::string(kind)+"/tone";
             catalog["entries"][id] = {{"kind",kind},{"name","tone"},{"tag",kind},{"source_sha256",std::string(64,'b')},{"path","tone.ogg"}};
@@ -110,6 +116,24 @@ int main() {
         require(stage.mixer().current_playing(AudioChannel::se),"Repeated non-looping SE replays from start");
         command(".playSE2 tone true 0 0\n"); command(".playSE2 other true 0 2\n");
         require(stage.mixer().playing(AudioChannel::se2),"Second SE channel supports independent overlap");
+        const auto unchanged_revision=stage.revision();
+        command(".screen shade_a shade_b shade_c\n");
+        require(stage.revision()==unchanged_revision && stage.current()[0].screen.empty(),"Screen only changes pending materials");
+        command(".transition 0 * 9999\n");
+        command(".stage frame.png wide.png 0 600 actor.png 400\n");
+        require(stage.current()[0].screen=="sys/shade_b" && stage.current()[1].screen=="sys/shade_c" && stage.current()[2].screen=="sys/shade_a","Screen parameter order is frame/background/foreground");
+        require(stage.current()[0].y==-600,"Screen preserves tall background crop geometry");
+        command(".screen shade_c shade_a\n");
+        require(stage.current()[0].screen=="sys/shade_b","Pending screen does not mutate displayed stage");
+        rejects([&] { command(".screen shade_a missing shade_c\n"); });
+        command(".transition 0 * 10\n");
+        command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        require(stage.previous()[0].screen=="sys/shade_b" && stage.current()[0].screen=="sys/shade_c","Old/new snapshots retain independent screen state");
+        require(stage.current()[1].screen=="sys/shade_a" && stage.current()[2].screen.empty(),"Two screen arguments clear the omitted frame filter; invalid update was atomic");
+        stage.update(3); command(".screen * * *\n");
+        command(".transition 0 * 9999\n"); command(".stage frame.png wide.png 0 0 actor.png 400\n");
+        for (const auto& layer : stage.current()) require(layer.screen.empty(),"Screen wildcard clears all scopes");
+        rejects([&] { command(".screen shade_a\n"); });
         std::cout << "Presentation tests PASS: scene placement, crossfade, scroll waits, panel, voiced messages and audio commands\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
