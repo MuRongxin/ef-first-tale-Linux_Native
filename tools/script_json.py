@@ -206,7 +206,9 @@ def write_fixture_scripts(root):
         if source.suffix != '.sc':
             continue
         output = source.with_suffix('.script.json')
-        output.write_bytes(encode(compile_script(source.read_text(encoding='utf-8'), identifier)))
+        encoded = encode(compile_script(source.read_text(encoding='utf-8'), identifier))
+        output.write_bytes(encoded)
+        spec['json_sha256'] = hashlib.sha256(encoded).hexdigest()
         spec['path'] = output.relative_to(root).as_posix()
         source.unlink()
     index.update(version=2, format='ef.script.v1', encoding='utf-8')

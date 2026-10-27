@@ -17,6 +17,7 @@ struct MovieRequest {
 };
 // Development scene host. Unsupported effects remain strict script errors.
 class Presentation {
+    friend struct CheckpointCodec;
 public:
     using AudioDecoder = std::function<std::shared_ptr<const AudioClip>(const std::filesystem::path&)>;
     explicit Presentation(const Content& content, AudioDecoder decoder=decode_audio) : content_(content),decoder_(std::move(decoder)) {}

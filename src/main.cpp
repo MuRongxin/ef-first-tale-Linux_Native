@@ -27,6 +27,8 @@ int main(int argc, char** argv) {
                              "  --validate-content    Decode every declared image and validate scene/font without a window\n"
                              "  --audit-scripts       Parse/compile all imported scripts (both e/j variants), print JSON\n"
                              "  --audit-resources     Check all script image/audio/video references and package files; exit 2 for unresolved references\n"
+                             "  --load-save FILE      Restore a native versioned save; implies saved script/variant\n"
+                             "  --save-file FILE      Quick-save destination (F2 save / F3 load); with trace, save final settled message\n"
                              "  --script ID           Run an imported script, e.g. scr/test.sc (strict by default)\n"
                              "  --variant e|j         Explicit timing variant; default e is a development choice\n"
                              "  --start-line N        Development entry at source line; does not restore preceding state\n"
@@ -51,12 +53,14 @@ int main(int argc, char** argv) {
                              "  --frames N            Exit after N rendered frames\n"
                              "  --smoke               Check normal -> borderless -> restored tier transitions\n"
                              "  --screenshot FILE     Write final frame as PPM (requires --frames or --smoke)\n"
-                             "Keys: drop font file to preview; F5 text appearance; F6 next collection face; F7/F8 smaller/larger; F9 default.\n"
+                             "Keys: F2 quick save, F3 quick load; drop font file to preview; F5 text appearance; F6 next collection face; F7/F8 smaller/larger; F9 default.\n"
                              "      F11 borderless, F10 maximize/restore, R reload content, Esc leave fullscreen/exit.\n";
                 return 0;
             }
             if (arg == "--content") options.content = value();
             else if (arg == "--script") options.script = value();
+            else if (arg == "--load-save") options.load_save = value();
+            else if (arg == "--save-file") options.save_file = value();
             else if (arg == "--variant") {
                 const auto variant = value();
                 if (variant != "e" && variant != "j") throw std::runtime_error("--variant must be e or j");
@@ -89,14 +93,17 @@ int main(int argc, char** argv) {
             else if (arg == "--smoke") options.smoke = true;
             else throw std::runtime_error("Unknown option: " + std::string(arg));
         }
+        if (!options.load_save.empty()) {
+            if (!options.script.empty() || options.start_line || options.text_preview || options.variant!='e') throw std::runtime_error("--load-save restores its own script/variant; do not combine with script/start/preview/variant overrides");
+        }
         if ((options.width == 0) != (options.height == 0))
             throw std::runtime_error("--width and --height must be used together");
         if (options.smoke && (options.maximized || options.fullscreen || options.frames || options.validate))
             throw std::runtime_error("--smoke requires a normal window and cannot combine with --frames/--validate-content");
         if (!options.screenshot.empty() && (!(options.frames || options.smoke) || options.validate))
             throw std::runtime_error("--screenshot requires --frames or --smoke");
-        if ((options.text_preview || options.trace_messages || options.start_line || options.silent) && options.script.empty()) throw std::runtime_error("Script options require --script ID");
-        if ((!options.script.empty() && (options.smoke || options.validate || options.audit_scripts || options.audit_resources)) ||
+        if ((options.text_preview || options.trace_messages || options.start_line || options.silent || !options.save_file.empty()) && options.script.empty() && options.load_save.empty()) throw std::runtime_error("Script options require --script ID");
+        if (((!options.script.empty() || !options.load_save.empty()) && (options.smoke || options.validate || options.audit_scripts || options.audit_resources)) ||
             (options.trace_messages && (options.frames || !options.screenshot.empty())))
             throw std::runtime_error("Conflicting script/validation/window smoke options");
         if ((options.audit_resources || options.audit_scripts) && (options.smoke || options.validate || options.frames || options.maximized || options.fullscreen || !options.screenshot.empty() || (options.audit_resources && options.audit_scripts)))

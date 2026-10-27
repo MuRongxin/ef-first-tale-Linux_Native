@@ -4,6 +4,7 @@
 
 namespace ef {
 class MessageUI {
+    friend struct CheckpointCodec;
 public:
     MessageUI(const Content& content,const std::string& path);
     // Feed panel/message events before building a scene; rendering never appends text.

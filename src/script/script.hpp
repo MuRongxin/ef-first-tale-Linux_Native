@@ -53,6 +53,7 @@ struct Message {
     std::string script, voice, name, text;
     int id{};
     std::size_t source_line{};
+    bool plain_text{};
 };
 struct Choice { std::string text, label; };
 struct ScriptOptions { char variant{'e'}; bool text_preview{}; std::size_t start_line{}; double characters_per_second{}; };
@@ -66,6 +67,7 @@ struct ScriptHost {
     std::function<void(const Instruction&)> observe{};
 };
 class ScriptRuntime {
+    friend struct CheckpointCodec;
 public:
     using Loader = std::function<std::shared_ptr<const Program>(const std::string&)>;
     using Resolver = std::function<std::string(const std::string&, const std::string&)>;

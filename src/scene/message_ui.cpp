@@ -99,7 +99,7 @@ void MessageUI::begin_message(int mode,const Message& message) {
         prefix=prefix_+current_text_;
         if (!prefix.empty() && prefix.back()!='\n' && prefix.back()!='\r') prefix+='\n';
     }
-    const auto current=Dialogue(message.text,0).full_text();
+    const auto current=message.plain_text ? message.text : Dialogue(message.text,0).full_text();
     const auto count=decode_utf8(prefix).size();
     if (prefix.size()+current.size()>1024*1024 || count+decode_utf8(current).size()>65536)
         throw std::runtime_error("Full-screen message page exceeds text budget");

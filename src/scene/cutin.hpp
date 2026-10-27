@@ -3,6 +3,7 @@
 #include <cstdint>
 namespace ef {
 class Cutin {
+    friend struct CheckpointCodec;
 public:
     Cutin(Layer image,int hold_ticks,int acceleration=-1);
     void update(double seconds);

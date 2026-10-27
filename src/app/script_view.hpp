@@ -4,11 +4,15 @@
 #include "scene/scene.hpp"
 #include "scene/presentation.hpp"
 #include "scene/message_ui.hpp"
+#include "save/checkpoint.hpp"
 namespace ef {
 class ScriptView {
 public:
     ScriptView(const Content& content, const Options& options);
     void update(double seconds);
+    [[nodiscard]] nlohmann::json checkpoint() const;
+    // Only call on a fresh candidate that has not been connected to AudioOutput.
+    void restore(const nlohmann::json&);
     void advance() { runtime_.advance(); }
     void choose(std::size_t index);
     void click(Point point);
@@ -17,6 +21,7 @@ public:
     Presentation& presentation() { return presentation_; }
     const Presentation& presentation() const { return presentation_; }
 private:
+    const Content& content_;
     Presentation presentation_;
     ScriptLibrary library_;
     ScriptRuntime runtime_;

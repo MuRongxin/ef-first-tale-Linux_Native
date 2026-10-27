@@ -6,6 +6,7 @@
 namespace ef {
 // Reconstructed 50-particle Snow/SnowH effect. Random seed is a port choice.
 class Snow {
+    friend struct CheckpointCodec;
 public:
     Snow(std::array<Layer,3> sprites, bool horizontal, std::uint32_t seed = 1);
     void update(double seconds);

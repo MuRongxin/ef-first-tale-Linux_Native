@@ -4,7 +4,7 @@
 运行时读取离线准备的 `content/`，不依赖 Wine、原版 exe 或汉化 DLL。
 
 目前支持全量资源导入与引用检查、高清图像预览、FreeType 矢量中文、剧本基础控制流和文字校阅。
-严格模式已接入基础场景、转场、滚动、语音/BGM/音效，以及启用 FFmpeg 构建时的视频播放；完整演出、原版 UI、存档及 KTX2 缓存仍在开发中。
+严格模式已接入基础场景、转场、滚动、语音/BGM/音效，以及启用 FFmpeg 构建时的视频播放；原生快速存读档已接入；完整演出、原版 UI/存档槽位菜单、旧档迁移及 KTX2 缓存仍在开发中。
 
 ## 构建
 
@@ -80,6 +80,9 @@ python3 tools/prepare_content.py --all --game-root "$GAME" --jobs 4
 # 严格执行已导入的开场
 ./build/dev/ef_native --content content --script scr/000_01mugai.sc
 ```
+
+F2 快速保存、F3 快速读取（对白显示完成或选项出现时保存）；可用 `--save-file FILE` 指定文件，
+或用 `--load-save FILE` 重启恢复，详见 [原生存档指南](docs/NATIVE-SAVES-20261027.md)。
 
 F11 切换无边框全屏，F10 最大化/还原，Esc 返回/退出。
 窗口初始尺寸默认按主显示器可用区域选择最大的 4:3 档位（800×600 / 1200×900 / … / 3200×2400），
@@ -205,7 +208,7 @@ GPU 按原生定点公式依次计算 HSV、overlay、screen 并保留 alpha，�
 
 ```bash
 ctest --preset dev
-# 安装 xvfb/xauth 后，CTest 也会执行整场景合成像素检查。
+# 安装下方图形测试依赖后，CTest 也会执行场景像素和存读档键盘检查。
 
 # 可选：软件 OpenGL 和真实键盘交互验证，全部使用合成素材
 sudo apt-get install xvfb xauth openbox x11-utils libxtst6

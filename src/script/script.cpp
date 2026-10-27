@@ -304,7 +304,7 @@ void ScriptRuntime::execute(const Instruction& instruction) {
             args[3].find("\\w")!=std::string::npos || args[3].find("\\v")!=std::string::npos || args[3].find("\\a")!=std::string::npos;
         if (options_.text_preview && timing)
             diagnostic(instruction, "text-preview: timing escapes are displayed without original timing");
-        message_ = Message{instruction.script, args[1], args[2], args[3], static_cast<int>(integer(args[0])), instruction.line};
+        message_ = Message{instruction.script, args[1], args[2], args[3], static_cast<int>(integer(args[0])), instruction.line, instruction.events.has_value()};
         if (!options_.text_preview && host_.message) host_.message(*message_);
         dialogue_ = std::move(text);
         if (dialogue_) dialogue_->update(0,host_.voice_playing && host_.voice_playing());

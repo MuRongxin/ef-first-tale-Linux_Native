@@ -122,7 +122,17 @@ private:
         SDL_Quit();
     }
 };}
-int run(const Options& options) {
+int run(const Options& requested) {
+    auto options=requested;
+    std::optional<nlohmann::json> initial_save;
+    if (!options.load_save.empty()) {
+        initial_save=read_checkpoint(options.load_save);
+        options.script=initial_save->at("vm").at("program").get<std::string>();
+        if (options.script.empty()) throw std::runtime_error("Save has no script program");
+        const auto variant=initial_save->at("vm").at("variant").get<std::string>();
+        if (variant!="e" && variant!="j") throw std::runtime_error("Invalid saved timing variant");
+        options.variant=variant[0];options.start_line=0;
+    }
     Content content(options.content);
     if (options.audit_resources) {
         const auto report = ScriptLibrary(content).audit_resources();
@@ -135,6 +145,7 @@ int run(const Options& options) {
     }
     std::unique_ptr<ScriptView> script;
     if (!options.script.empty()) script = std::make_unique<ScriptView>(content, options);
+    if (initial_save) script->restore(*initial_save);
     if (options.trace_messages) {
         int messages = 0;
         std::uint64_t last_message{};
@@ -147,6 +158,15 @@ int run(const Options& options) {
                 const auto& message = *script->runtime().message();
                 std::cout << "message " << message.script << " L0=" << message.id << " source_line=" << message.source_line << '\n';
                 ++messages;
+                if (messages==options.trace_messages && !options.save_file.empty()) {
+                    const auto serial=script->runtime().message_serial();
+                    if (!script->runtime().message_complete()) script->advance();
+                    for (int n=0;!script->runtime().message_complete() && n<1000;++n) script->update(.1);
+                    if (script->runtime().message_serial()!=serial) throw std::runtime_error("Trace save point advanced automatically; choose a manual message");
+                    write_checkpoint(options.save_file,script->checkpoint());
+                    std::cout<<"[save] saved "<<options.save_file<<'\n';
+                    break;
+                }
                 // Finish development typewriter text before requesting the next message.
                 script->advance();
                 script->advance();
@@ -254,11 +274,53 @@ int run(const Options& options) {
     FixedStep timer;
     std::uint64_t ticks{};
     std::optional<AssetTier> last_tier;
+    bool checkpoint_clock_reset{};
+    std::string checkpoint_notice;
+    Uint64 checkpoint_notice_until{};
+    auto checkpoint_action=[&](bool save) {
+        try {
+            if (!script || options.text_preview) throw std::runtime_error("A strict game session is required");
+            const auto path=!options.save_file.empty() ? options.save_file : !options.load_save.empty() ? options.load_save : default_checkpoint_path();
+            if (save) {
+                write_checkpoint(path,script->checkpoint());checkpoint_notice="进度已保存。";
+                std::cout<<"[save] saved "<<path<<std::endl;
+            } else {
+                const auto data=read_checkpoint(path);auto candidate_options=options;
+                candidate_options.script=data.at("vm").at("program").get<std::string>();
+                const auto variant=data.at("vm").at("variant").get<std::string>();
+                if (variant!="e" && variant!="j") throw std::runtime_error("Invalid saved timing variant");
+                candidate_options.variant=variant[0];candidate_options.start_line=0;
+                auto replacement=std::make_unique<ScriptView>(content,candidate_options);replacement->restore(data);
+                auto replacement_scene=replacement->scene();font->validate(replacement_scene);
+                const auto flags=SDL_GetWindowFlags(window.handle);
+                const auto tier=asset_tier(flags & SDL_WINDOW_MAXIMIZED,flags & SDL_WINDOW_FULLSCREEN);
+                renderer.preload(content,replacement_scene.layers,tier);
+                renderer.preload(content,replacement->presentation().current(),tier);
+                renderer.preload(content,replacement->presentation().effects(),tier);
+                auto replacement_audio=std::make_unique<AudioOutput>(replacement->presentation().mixer(),!options.silent);
+                replacement->presentation().realtime_audio(replacement_audio->active());
+#ifdef EF_HAS_FFMPEG
+                replacement->presentation().set_movie_supported(true);
+                movie.reset();movie_started=0;
+#endif
+                audio.reset();script.swap(replacement);audio=std::move(replacement_audio);scene=std::move(replacement_scene);
+                renderer.invalidate_scene();last_tier.reset();checkpoint_clock_reset=true;
+                checkpoint_notice="进度已恢复。";std::cout<<"[save] loaded "<<path<<std::endl;
+            }
+        } catch (const std::exception& e) {
+            checkpoint_notice=save ? "暂时无法保存，请等待对白或演出完成，并检查存档目录。" : "读档失败，当前进度已保留。";
+            std::cerr<<"[save] "<<e.what()<<std::endl;
+        }
+        checkpoint_notice_until=SDL_GetTicks()+4000;
+    };
     while (running) {
         const auto frame_start = SDL_GetTicksNS();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             window.track(event);
+            if (script && event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && (event.key.key==SDLK_F2 || event.key.key==SDLK_F3)) {
+                checkpoint_action(event.key.key==SDLK_F2);continue;
+            }
             if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
 #ifdef EF_HAS_FFMPEG
             if (movie && script && script->presentation().movie_active()) {
@@ -358,9 +420,10 @@ int run(const Options& options) {
                       << " fullscreen=" << !!(flags & SDL_WINDOW_FULLSCREEN) << '\n';
             last_tier = tier;
         }
-        const int steps = timer.advance(static_cast<double>(frame_start - previous) / 1e9);
+        int steps=0;
+        if (checkpoint_clock_reset) {timer=FixedStep{};previous=SDL_GetTicksNS();checkpoint_clock_reset=false;}
+        else {steps=timer.advance(static_cast<double>(frame_start-previous)/1e9);previous=frame_start;}
         ticks += static_cast<std::uint64_t>(steps);
-        previous = frame_start;
         int width{}, height{};
         checked(SDL_GetWindowSizeInPixels(window.handle, &width, &height), "Framebuffer size");
         const auto view = fit_viewport(width, height);
@@ -451,6 +514,10 @@ int run(const Options& options) {
                 notice.text+=font_notice_saved ? "\n有效设置已自动保存。" : "\n当前预览已生效，但配置保存失败，请检查配置目录。";
                 font->draw(renderer,notice,view.scale());
             }
+        }
+        if (SDL_GetTicks()<checkpoint_notice_until) {
+            Layer box;box.kind=LayerKind::rectangle;box.x=10;box.y=100;box.width=780;box.height=42;box.color={0,0,0,.9f};renderer.rectangle(box);
+            Layer notice;notice.kind=LayerKind::text;notice.x=20;notice.y=108;notice.width=760;notice.font_size=18;notice.text=checkpoint_notice;font->draw(renderer,notice,view.scale());
         }
         ++frames;
         bool finished = options.frames > 0 && frames >= options.frames;

@@ -334,16 +334,26 @@ void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 void Renderer::rectangle(const Layer& layer) { quad(white_, layer.x, layer.y, layer.width, layer.height, layer.color); }
-void Renderer::clear_cache() {
+void Renderer::invalidate_scene() {
     transition_history_valid_=false;transition_history_.reset();transition_next_.reset();
-    shake_valid_=false;
-    shake_source_.reset(); shake_history_.reset(); shake_next_.reset();
-    cache_.clear(); strips_.clear();
-    cache_bytes_ = strip_bytes_ = 0;
-    rejected_.clear(); strip_rejected_.clear();
-    reported_.clear();
-    snapshot_valid_ = false;
-    previous_target_.reset(); current_target_.reset();
+    shake_valid_=false;shake_source_.reset();shake_history_.reset();shake_next_.reset();
+    snapshot_valid_=false;previous_target_.reset();current_target_.reset();
+}
+void Renderer::clear_cache() {
+    invalidate_scene();cache_.clear();strips_.clear();cache_bytes_=strip_bytes_=0;
+    rejected_.clear();strip_rejected_.clear();reported_.clear();
+}
+void Renderer::preload(const Content& content,const std::vector<Layer>& layers,AssetTier tier) {
+    for (const auto& l:layers) {
+        if (l.advance_marker) (void)texture(content,l.advance_marker->asset,tier);
+        if (l.kind!=LayerKind::image) continue;
+        const auto& a=content.asset(l.asset);
+        if (l.trim_bottom<0 || l.trim_bottom>=a.height || (l.trim_bottom && l.source)) throw std::runtime_error("Invalid candidate image trim");
+        if (l.source) {const auto& r=*l.source;if (r[0]<0 || r[1]<0 || r[2]<=0 || r[3]<=0 || r[0]+r[2]>static_cast<float>(a.width) || r[1]+r[3]>static_cast<float>(a.height)) throw std::runtime_error("Invalid candidate image atlas");}
+        (void)texture(content,l.asset,tier);
+        if (!l.screen.empty()) (void)texture(content,l.screen,tier,true);
+        if (!l.overlay.empty()) (void)texture(content,l.overlay,tier,true);
+    }
 }
 void Renderer::opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier, const std::function<void(const Layer&)>& text) {
     glDisable(GL_BLEND);

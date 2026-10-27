@@ -16,6 +16,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_
 configure_file(src/script/script_ops.hpp.in generated/script_ops.hpp @ONLY)
 
 add_library(ef_core
+    src/save/checkpoint.cpp
     src/settings/font_settings.cpp
     src/settings/window_settings.cpp
     src/core/display.cpp
@@ -213,6 +214,11 @@ if(BUILD_TESTING)
     target_link_libraries(ef_dialogue_tests PRIVATE ef_core)
     ef_compile_options(ef_dialogue_tests)
     add_test(NAME dialogue COMMAND ef_dialogue_tests)
+    add_executable(ef_save_tests tests/save_tests.cpp)
+    target_link_libraries(ef_save_tests PRIVATE ef_core)
+    target_compile_definitions(ef_save_tests PRIVATE EF_AUDIO_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/audio-tone.ogg" EF_UI_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/examples/message.ui.json")
+    ef_compile_options(ef_save_tests)
+    add_test(NAME save_checkpoint COMMAND ef_save_tests)
     add_executable(ef_script_json_tests tests/script_json_tests.cpp)
     target_link_libraries(ef_script_json_tests PRIVATE ef_core)
     ef_compile_options(ef_script_json_tests)
@@ -235,6 +241,9 @@ if(BUILD_TESTING)
                 --faces-binary $<TARGET_FILE:ef_font_faces_tests>)
         endif()
         if(EF_BUILD_APP AND EF_XVFB_RUN)
+            add_test(NAME save_ui COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/save_smoke.py --binary $<TARGET_FILE:ef_native>)
+            set_tests_properties(save_ui PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME window_geometry COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/window_geometry_smoke.py --binary $<TARGET_FILE:ef_native>)
             set_tests_properties(window_geometry PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")

@@ -29,7 +29,7 @@ std::uint64_t AudioMixer::duration_frames(double seconds) const {
     if (!std::isfinite(seconds) || seconds < 0 || seconds > 1e9) throw std::runtime_error("Invalid audio duration");
     return static_cast<std::uint64_t>(std::ceil(seconds * output_rate_));
 }
-void AudioMixer::play(AudioChannel channel, std::shared_ptr<const AudioClip> clip, bool loop, float gain, float pan, double fade_in_seconds, double fade_out_seconds, double fade_out_rate) {
+void AudioMixer::play(AudioChannel channel, std::shared_ptr<const AudioClip> clip, bool loop, float gain, float pan, double fade_in_seconds, double fade_out_seconds, double fade_out_rate, std::string resource_id) {
     const auto i = index(channel);
     gain_value(gain);
     if (!std::isfinite(pan) || pan < -1 || pan > 1) throw std::runtime_error("Audio pan must be -1..1");
@@ -59,7 +59,7 @@ void AudioMixer::play(AudioChannel channel, std::shared_ptr<const AudioClip> cli
             tail->ramp_left=out; tail->stop_after_ramp=true;
         } else retired=std::move(current.clip);
         slots_[i] = Slot{std::move(clip), 0, fade ? 0.0 : gain, gain, fade ? gain/static_cast<double>(fade) : 0,
-                         pan, fade, true, loop, false, channel};
+                         pan, fade, true, loop, false, channel, std::move(resource_id)};
     } // Retired PCM is freed outside the callback's lock.
 }
 void AudioMixer::stop_current(AudioChannel channel,double fade_out_seconds,double rate) {

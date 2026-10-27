@@ -13,6 +13,7 @@ struct Options {
     bool text_preview{}, audit_scripts{}, audit_resources{};
     int trace_messages{}, start_line{};
     bool silent{};
+    std::filesystem::path load_save, save_file;
     int text_speed{40};
     std::filesystem::path font_config, window_config;
     std::optional<std::filesystem::path> font_file;

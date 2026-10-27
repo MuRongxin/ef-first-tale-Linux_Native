@@ -6,7 +6,7 @@
 
 namespace ef {
 ScriptView::ScriptView(const Content& content, const Options& options)
-    : presentation_(content), library_(content),
+    : content_(content),presentation_(content), library_(content),
       runtime_([this, variant = options.variant](const std::string& id) { return library_.compile(id, variant); },
                [this](const std::string& current, const std::string& target) { return library_.resolve(current, target); },
                options.script, {options.variant, options.text_preview, static_cast<std::size_t>(options.start_line), static_cast<double>(options.text_speed)}),
@@ -51,6 +51,11 @@ ScriptView::ScriptView(const Content& content, const Options& options)
     if (!options.text_preview) template_.title = "ef · 严格剧本执行（开发布局）";
     std::cout << "script entry=" << options.script << " variant=" << options.variant
               << " mode=" << (options.text_preview ? "text-preview" : "strict") << '\n';
+}
+nlohmann::json ScriptView::checkpoint() const { return capture_checkpoint(content_,runtime_,presentation_,message_ui_ ? &*message_ui_ : nullptr); }
+void ScriptView::restore(const nlohmann::json& j) {
+    restore_checkpoint(content_,j,runtime_,presentation_,message_ui_ ? &*message_ui_ : nullptr);
+    elapsed_=ready_started_=0;reported_=0;last_message_=last_ready_=0;last_state_=ScriptState::running;
 }
 const Layer* ScriptView::choice_layer() const {
     for (const auto& layer : template_.layers) if (layer.slot == "script_choice") return &layer;

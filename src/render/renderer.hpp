@@ -44,6 +44,9 @@ public:
     // Opaque movie frame: the native player clears the stage and draws the video into
     // the requested design-space rectangle. Pixels are top-down RGBA at scale 1.
     void movie(const std::uint8_t* rgba, int width, int height, int x, int y, int w, int h);
+    // Validate/load candidate images without drawing or discarding the active composition.
+    void preload(const Content&,const std::vector<Layer>&,AssetTier);
+    void invalidate_scene();
     void clear_cache();
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:

@@ -3,6 +3,7 @@
 namespace ef {
 // Normal StageInfo path; canonical 100ms samples use the installation's effect interval.
 class Walking {
+    friend struct CheckpointCodec;
 public:
     Walking(int period,int speed);
     void update(double seconds);

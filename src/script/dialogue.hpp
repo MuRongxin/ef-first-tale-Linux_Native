@@ -18,6 +18,7 @@ std::vector<DialogueEvent> legacy_dialogue_events(const std::string& text);
 // Source is UTF-8 and already decoded by the importer. Supported controls are
 // \n, \a, \w, \v and \\. Limits: 1 MiB source and 65,536 tokens per message.
 class Dialogue {
+    friend struct CheckpointCodec;
 public:
     Dialogue(std::string text, double characters_per_second);
     Dialogue(const std::vector<DialogueEvent>& events, double characters_per_second);
