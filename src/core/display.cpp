@@ -16,6 +16,20 @@ WindowSize adaptive_window_size(int usable_width, int usable_height) {
     const int unit = std::max(80, std::min(usable_width / 4, usable_height / 3));
     return {unit * 4, unit * 3};
 }
+MovieTextureSize movie_texture_size(int design_width, int design_height,
+                                    int view_width, int view_height, int max_side) {
+    if (design_width <= 0 || design_height <= 0 || view_width <= 0 || view_height <= 0) return {};
+    const double scale = std::min(static_cast<double>(view_width) / 800.0,
+                                  static_cast<double>(view_height) / 600.0);
+    long long width = std::max(1LL, std::llround(design_width * scale));
+    long long height = std::max(1LL, std::llround(design_height * scale));
+    if (max_side > 0 && (width > max_side || height > max_side)) {
+        const double factor = static_cast<double>(max_side) / static_cast<double>(std::max(width, height));
+        width = std::max(1LL, std::llround(width * factor));
+        height = std::max(1LL, std::llround(height * factor));
+    }
+    return {static_cast<int>(width), static_cast<int>(height)};
+}
 WindowSize resolve_window_size(int explicit_width, int explicit_height,
                                int remembered_width, int remembered_height,
                                int usable_width, int usable_height) {

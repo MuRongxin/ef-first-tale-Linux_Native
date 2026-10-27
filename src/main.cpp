@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
                              "  --width N --height N  Initial window size (320..16384 / 240..16384);\n"
                              "                        default auto: largest 4:3 tier fitting the display\n"
                              "  --window-config FILE  Override remembered window geometry path\n"
+                             "  --movie-texture-cap N Movie texture max side (default 3200; lower reduces GPU upload)\n"
                              "  --maximized           Start maximized (8x)\n"
                              "  --fullscreen          Start in desktop/borderless fullscreen (8x)\n"
                              "  --frames N            Exit after N rendered frames\n"
@@ -80,6 +81,7 @@ int main(int argc, char** argv) {
             else if (arg == "--width") options.width = integer(320, 16384);
             else if (arg == "--height") options.height = integer(240, 16384);
             else if (arg == "--window-config") options.window_config = value();
+            else if (arg == "--movie-texture-cap") options.movie_texture_cap = integer(320, 7680);
             else if (arg == "--frames") options.frames = integer(1, 1000000);
             else if (arg == "--maximized") options.maximized = true;
             else if (arg == "--fullscreen") options.fullscreen = true;

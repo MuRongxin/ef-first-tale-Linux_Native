@@ -361,6 +361,9 @@ int run(const Options& options) {
         const int steps = timer.advance(static_cast<double>(frame_start - previous) / 1e9);
         ticks += static_cast<std::uint64_t>(steps);
         previous = frame_start;
+        int width{}, height{};
+        checked(SDL_GetWindowSizeInPixels(window.handle, &width, &height), "Framebuffer size");
+        const auto view = fit_viewport(width, height);
         if (script) {
             for (int i = 0; i < steps; ++i) script->update(FixedStep::interval);
             scene = script->scene();
@@ -371,9 +374,15 @@ int run(const Options& options) {
             if (presentation.movie_active()) {
                 const auto& request = *presentation.movie_request();
                 if (!movie) {
-                    movie = std::make_unique<MoviePlayer>(content.resolve(request.path), request.width, request.height, audio ? audio.get() : nullptr);
+                    const auto texture = movie_texture_size(request.width, request.height,
+                        view.width, view.height, options.movie_texture_cap);
+                    const int texture_width = texture.width > 0 ? texture.width : request.width;
+                    const int texture_height = texture.height > 0 ? texture.height : request.height;
+                    movie = std::make_unique<MoviePlayer>(content.resolve(request.path),
+                        texture_width, texture_height, audio ? audio.get() : nullptr);
                     movie_started = SDL_GetTicksNS();
-                    std::cerr << "[movie] start " << request.asset << " " << request.width << "x" << request.height << "\n";
+                    std::cerr << "[movie] start " << request.asset << " dest " << request.width << "x" << request.height
+                              << " texture " << texture_width << "x" << texture_height << "\n";
                 }
                 const auto now = SDL_GetTicksNS();
                 const double delta = movie_started == 0 ? 0.0 : static_cast<double>(now - movie_started) / 1e9;
@@ -388,9 +397,6 @@ int run(const Options& options) {
             } else if (movie) movie.reset();
         }
 #endif
-        int width{}, height{};
-        checked(SDL_GetWindowSizeInPixels(window.handle, &width, &height), "Framebuffer size");
-        const auto view = fit_viewport(width, height);
         if (view.width == 0 || view.height == 0 || (flags & SDL_WINDOW_MINIMIZED)) { SDL_Delay(20); continue; }
         if (audio && audio->failed()) throw std::runtime_error("Audio output callback failed");
         auto rendered_scene=scene;
