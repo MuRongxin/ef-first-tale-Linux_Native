@@ -52,7 +52,7 @@
 - 图像：PNG/WebP 解码、`design_size` 映射、物理像素视口/留黑、分层 `screen` 滤色（原生整数公式 + 底对齐色带采样）；
 - 文字：FreeType 实际像素字形（Noto Sans CJK TTC face 可配置）、自定义/回退字体、描边与阴影、基线偏移、CJK 禁则、预排版 + 逐码点揭示、全屏续写/分组清页；
 - 消息窗：模式 1/2/3 几何与姓名规则、长消息上移、推进条 12 帧、面板交叠切换（约 160 ms 原版时钟）；
-- 影片：`.movie` 阻塞播放，FFmpeg 解码在独立 worker 线程完成（有界帧队列 + 音频环背压），纹理按目标矩形绘制、音频混入 SDL 输出、可跳过；4K 软解实测约 58–75 fps（24 fps 原片），“质量优先”保留 4K 不做固定 800 转码；`opening.sc` 静音墙钟完成验证；FFmpeg 开发包缺失时严格未支持；
+- 影片：`.movie` 阻塞播放，FFmpeg 解码在独立 worker 线程完成（有界帧队列 + 音频环背压），纹理按目标矩形绘制、音频混入 SDL 输出、可跳过；4K 软解实测约 58–75 fps（24 fps 原片），“质量优先”保留 4K 不做固定 800 转码；`opening.sc` 静音墙钟完成验证，PipeWire 后端实测 `ef_native` 48 kHz float32 音频流、音频时钟正常；FFmpeg 开发包缺失时严格未支持；
 - 窗口：默认按显示器可用区域选最大 4:3 档位、自由拖动缩放/居中 letterbox；退出保存尺寸+最大化，损坏/越界配置回退自适应；`--window-config` 可控路径；验证见 WINDOW-LAYOUT 文档；
 - 演出/音频：基础 `.stage`（背景/裁切/前景底对齐）、开场雪花、BGM/SE/SE2/voice 播放、跨曲交叠淡化与退场声部、`.shakeScreen`/`.overlay`/`.HSVfilter`、`.transition` type0/1/2/14/16/17（含 200 项缩放表叠影历史帧）、`.effect` Cutin/WScroll2/end；
 - 自动化：ctest 25/25（含音频/合成/转场像素回归）、core ASan 18/18 通过；Xvfb 渲染/键盘/EGL 检查 PASS；真实素材 4×→8×→4× 与 100 条消息追踪 PASS；e/j 开场严格 trace 1694 消息基线无回归，8 个转场脚本 24/30 点位真实执行通过。
