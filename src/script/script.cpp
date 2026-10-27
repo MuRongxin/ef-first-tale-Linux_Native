@@ -221,6 +221,9 @@ ScriptRuntime::ScriptRuntime(Loader loader, Resolver resolver, std::string entry
 void ScriptRuntime::update_local_variable(const std::string& name, std::int64_t value) {
     if (auto it=variables_.find(name); it!=variables_.end()) it->second=value;
 }
+nlohmann::json ScriptRuntime::inspect() const {
+    return {{"program",program_->id},{"next_instruction",pc_},{"locals",variables_},{"globals",globals_}};
+}
 std::int64_t ScriptRuntime::variable(const std::string& name) const {
     if (const auto it = variables_.find(name); it != variables_.end()) return it->second;
     if (const auto it = globals_.find(name); it != globals_.end()) return it->second;
@@ -257,6 +260,7 @@ void ScriptRuntime::update(double seconds) {
         try {
             if (instruction.colon_variant || instruction.raw.find("[e]:.") != std::string::npos || instruction.raw.find("[j]:.") != std::string::npos)
                 diagnostic(instruction,"compatibility: colon after timing variant");
+            if (host_.observe) host_.observe(instruction);
             execute(instruction);
         }
         catch (const std::exception& e) { throw std::runtime_error(instruction.location() + ": " + e.what()); }

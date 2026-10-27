@@ -18,7 +18,8 @@ struct MovieRequest {
 // Development scene host. Unsupported effects remain strict script errors.
 class Presentation {
 public:
-    explicit Presentation(const Content& content) : content_(content) {}
+    using AudioDecoder = std::function<std::shared_ptr<const AudioClip>(const std::filesystem::path&)>;
+    explicit Presentation(const Content& content, AudioDecoder decoder=decode_audio) : content_(content),decoder_(std::move(decoder)) {}
     bool command(const Instruction& instruction);
     void message(const Message& message);
     void update(double seconds);
@@ -53,6 +54,7 @@ private:
     void play(AudioChannel channel, const std::string& kind, const std::string& name,
               bool r18, bool loop, float gain, double fade, double fade_out_rate=0);
     const Content& content_;
+    AudioDecoder decoder_;
     AudioMixer mixer_;
     std::array<std::string,4> playing_ids_;
     std::array<bool,4> playing_loops_{};

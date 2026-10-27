@@ -63,6 +63,7 @@ struct ScriptHost {
     std::function<bool()> busy;
     std::function<bool()> voice_playing{};
     std::function<void(const std::string&, std::int64_t)> local_assignment{};
+    std::function<void(const Instruction&)> observe{};
 };
 class ScriptRuntime {
 public:
@@ -86,6 +87,8 @@ public:
     [[nodiscard]] std::int64_t variable(const std::string& name) const;
     // Host clocks may update an existing local without recursively notifying assignments.
     void update_local_variable(const std::string& name, std::int64_t value);
+    // Read-only diagnostics for offline route coverage, not a persistent save format.
+    [[nodiscard]] nlohmann::json inspect() const;
 private:
     void execute(const Instruction& instruction);
     void jump(const std::string& label);

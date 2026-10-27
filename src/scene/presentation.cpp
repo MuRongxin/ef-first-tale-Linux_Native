@@ -92,7 +92,7 @@ void Presentation::play(AudioChannel channel, const std::string& kind, const std
     }
     const auto& resource = content_.resource(kind, name, r18);
     // Decode only on the control thread. The mixer retains a bounded pool of current/outgoing clips.
-    auto clip = decode_audio(content_.resolve(resource.path));
+    auto clip = decoder_(content_.resolve(resource.path));
     mixer_.play(channel, std::move(clip), loop, gain, 0, fade_seconds, 0, fade_out_rate);
     playing_ids_.at(static_cast<std::size_t>(channel)) = resource.id;
     playing_loops_.at(static_cast<std::size_t>(channel))=loop;

@@ -63,6 +63,18 @@ int main(int argc, char** argv) {
         require(ogg->sample_rate == 22050 && ogg->channels == 1 && ogg->frames() > 400 && ogg->frames() < 1000, "Vorbis format and granule duration");
         require(std::any_of(ogg->samples.begin(),ogg->samples.end(),[](float value) { return std::abs(value) > 0.02f; }), "Vorbis tone must decode into nonzero PCM");
 
+        AudioMixer original(24000);
+        original.play(AudioChannel::bgm,clip({.1f,.2f}),true,1,0,1);
+        original.advance(.00001);
+        AudioMixer fork(original);
+        std::array<float,8> original_pcm{},fork_pcm{};
+        original.mix(original_pcm);fork.mix(fork_pcm);
+        require(original_pcm==fork_pcm,"Mixer checkpoint lost fractional position or fade envelope");
+        require(fork.sample_rate()==24000 && fork.playing(AudioChannel::bgm),"Mixer checkpoint lost clock or active track");
+        original.stop_all();
+        require(fork.playing(AudioChannel::bgm),"Mixer checkpoint shares mutable playback state");
+        fork.advance(20);
+        require(fork.playing(AudioChannel::bgm),"Forked loop did not survive its independent clock");
         AudioMixer mixer;
         std::array<float,12> output{};
         mixer.play(AudioChannel::bgm,clip({0.1f,0.2f}),true);

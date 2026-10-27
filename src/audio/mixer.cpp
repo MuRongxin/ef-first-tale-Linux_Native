@@ -15,6 +15,11 @@ void fade_rate(double rate) {
 AudioMixer::AudioMixer(int output_rate) : output_rate_(output_rate) {
     if (output_rate < 8000 || output_rate > 192000) throw std::runtime_error("Audio output rate must be 8..192 kHz");
 }
+AudioMixer::AudioMixer(const AudioMixer& other) : output_rate_(48000) {
+    const std::lock_guard lock(other.mutex_);
+    output_rate_=other.output_rate_;
+    slots_=other.slots_;
+}
 std::size_t AudioMixer::index(AudioChannel channel) {
     const auto result = static_cast<std::size_t>(channel);
     if (result >= 4) throw std::runtime_error("Invalid audio channel");

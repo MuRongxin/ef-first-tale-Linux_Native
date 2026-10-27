@@ -10,6 +10,8 @@ enum class AudioChannel : std::size_t { bgm, voice, se, se2 };
 class AudioMixer {
 public:
     explicit AudioMixer(int output_rate = 48000);
+    // Independent silent/checkpoint playback state; immutable PCM is shared.
+    AudioMixer(const AudioMixer& other);
     // Positive rates (linear gain/second) override durations and are resolved under the commit lock.
     void play(AudioChannel channel, std::shared_ptr<const AudioClip> clip, bool loop = false,
               float gain = 1, float pan = 0, double fade_in_seconds = 0, double fade_out_seconds = 0, double fade_out_rate = 0);
