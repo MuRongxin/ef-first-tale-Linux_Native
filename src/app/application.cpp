@@ -1,5 +1,6 @@
 #include "app/application.hpp"
 #include "app/script_view.hpp"
+#include "save/slots.hpp"
 #include "audio/output.hpp"
 #include "core/display.hpp"
 #include "data/content.hpp"
@@ -124,16 +125,38 @@ private:
 };}
 int run(const Options& requested) {
     auto options=requested;
+    Content content(options.content);
+    std::unique_ptr<SaveSlots> slots;
+    if (!options.save_dir.empty() || options.save_slot || !options.load_slot.empty() || options.list_saves)
+        slots=std::make_unique<SaveSlots>(options.save_dir.empty() ? default_save_directory() : options.save_dir);
+    if (options.list_saves) {std::cout<<slots->list(content).dump(2)<<'\n';return 0;}
     std::optional<nlohmann::json> initial_save;
-    if (!options.load_save.empty()) {
-        initial_save=read_checkpoint(options.load_save);
+    if (!options.load_slot.empty()) {
+        initial_save=options.load_slot=="latest" ? slots->load_latest_quick() : slots->load(parse_save_slot(options.load_slot));
+        if (!options.save_slot && options.load_slot!="latest") {const auto id=parse_save_slot(options.load_slot);if (!id.quick) options.save_slot=id.number;}
+    } else if (!options.load_save.empty()) initial_save=read_checkpoint(options.load_save);
+    if (initial_save) {
         options.script=initial_save->at("vm").at("program").get<std::string>();
         if (options.script.empty()) throw std::runtime_error("Save has no script program");
         const auto variant=initial_save->at("vm").at("variant").get<std::string>();
         if (variant!="e" && variant!="j") throw std::runtime_error("Invalid saved timing variant");
         options.variant=variant[0];options.start_line=0;
     }
-    Content content(options.content);
+    const auto loose_save_path=[&] {return !options.save_file.empty() ? options.save_file : !options.load_save.empty() ? options.load_save : default_checkpoint_path();};
+    const auto save_session=[&](const nlohmann::json& data) {
+        if (slots) {
+            if (options.save_slot) {slots->save_manual(options.save_slot,data);return "slot "+std::to_string(options.save_slot);}
+            return "slot "+save_slot_name(slots->save_quick(data));
+        }
+        const auto path=loose_save_path();write_checkpoint(path,data);return path.string();
+    };
+    const auto load_session=[&]() -> std::pair<nlohmann::json,std::string> {
+        if (slots) {
+            if (options.save_slot) return {slots->load({false,options.save_slot}),"slot "+std::to_string(options.save_slot)};
+            return {slots->load_latest_quick(),"latest quick slot"};
+        }
+        const auto path=loose_save_path();return {read_checkpoint(path),path.string()};
+    };
     if (options.audit_resources) {
         const auto report = ScriptLibrary(content).audit_resources();
         std::cout << report.dump(2) << '\n';
@@ -158,13 +181,13 @@ int run(const Options& requested) {
                 const auto& message = *script->runtime().message();
                 std::cout << "message " << message.script << " L0=" << message.id << " source_line=" << message.source_line << '\n';
                 ++messages;
-                if (messages==options.trace_messages && !options.save_file.empty()) {
+                if (messages==options.trace_messages && (!requested.save_file.empty() || requested.save_slot>0)) {
                     const auto serial=script->runtime().message_serial();
                     if (!script->runtime().message_complete()) script->advance();
                     for (int n=0;!script->runtime().message_complete() && n<1000;++n) script->update(.1);
                     if (script->runtime().message_serial()!=serial) throw std::runtime_error("Trace save point advanced automatically; choose a manual message");
-                    write_checkpoint(options.save_file,script->checkpoint());
-                    std::cout<<"[save] saved "<<options.save_file<<'\n';
+                    const auto target=save_session(script->checkpoint());
+                    std::cout<<"[save] saved "<<target<<'\n';
                     break;
                 }
                 // Finish development typewriter text before requesting the next message.
@@ -280,12 +303,11 @@ int run(const Options& requested) {
     auto checkpoint_action=[&](bool save) {
         try {
             if (!script || options.text_preview) throw std::runtime_error("A strict game session is required");
-            const auto path=!options.save_file.empty() ? options.save_file : !options.load_save.empty() ? options.load_save : default_checkpoint_path();
             if (save) {
-                write_checkpoint(path,script->checkpoint());checkpoint_notice="进度已保存。";
-                std::cout<<"[save] saved "<<path<<std::endl;
+                const auto target=save_session(script->checkpoint());checkpoint_notice="进度已保存。";
+                std::cout<<"[save] saved "<<target<<std::endl;
             } else {
-                const auto data=read_checkpoint(path);auto candidate_options=options;
+                const auto [data,target]=load_session();auto candidate_options=options;
                 candidate_options.script=data.at("vm").at("program").get<std::string>();
                 const auto variant=data.at("vm").at("variant").get<std::string>();
                 if (variant!="e" && variant!="j") throw std::runtime_error("Invalid saved timing variant");
@@ -305,7 +327,7 @@ int run(const Options& requested) {
 #endif
                 audio.reset();script.swap(replacement);audio=std::move(replacement_audio);scene=std::move(replacement_scene);
                 renderer.invalidate_scene();last_tier.reset();checkpoint_clock_reset=true;
-                checkpoint_notice="进度已恢复。";std::cout<<"[save] loaded "<<path<<std::endl;
+                checkpoint_notice="进度已恢复。";std::cout<<"[save] loaded "<<target<<std::endl;
             }
         } catch (const std::exception& e) {
             checkpoint_notice=save ? "暂时无法保存，请等待对白或演出完成，并检查存档目录。" : "读档失败，当前进度已保留。";

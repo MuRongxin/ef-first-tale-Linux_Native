@@ -83,6 +83,9 @@ python3 tools/prepare_content.py --all --game-root "$GAME" --jobs 4
 
 F2 快速保存、F3 快速读取（对白显示完成或选项出现时保存）；可用 `--save-file FILE` 指定文件，
 或用 `--load-save FILE` 重启恢复，详见 [原生存档指南](docs/NATIVE-SAVES-20261027.md)。
+100 个普通槽位、9 个快速槽轮换已接入：`--save-dir DIR` 启用槽位模式，
+`--save-slot 1` 选择普通槽位，`--load-slot 1|q1|latest` 恢复，
+`--list-saves` 查看列表，详见 [槽位指南](docs/SAVE-SLOTS-20261027.md)。
 
 F11 切换无边框全屏，F10 最大化/还原，Esc 返回/退出。
 窗口初始尺寸默认按主显示器可用区域选择最大的 4:3 档位（800×600 / 1200×900 / … / 3200×2400），

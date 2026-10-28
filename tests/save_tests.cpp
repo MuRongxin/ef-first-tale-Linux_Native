@@ -1,4 +1,6 @@
 #include "save/checkpoint.hpp"
+#include "save/slots.hpp"
+#include <future>
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -95,6 +97,49 @@ int main() {
             for (int n=0;n<10;++n) {source.host.update(.04);target.host.update(.04);require(source.save()["presentation"]==target.save()["presentation"],"Finder/scroll continuity changed after restore");}
             source.command("transition",{{"type",0},{"mask",nullptr},{"speed",10}});source.command("stage",stage);
             rejects([&]{source.save();});
+        }
+        {
+            const auto root=f.temp.path/"managed";SaveSlots slots(root);
+            const auto empty=slots.list(c);require(empty["slots"].size()==109 && !std::filesystem::exists(root),"Listing created a directory or lost slots");
+            rejects([&]{slots.save_manual(101,saved);});require(!std::filesystem::exists(root),"Invalid slot created a directory");
+            slots.save_manual(1,saved);slots.save_manual(100,choice);
+            require(slots.load({false,1})==saved && slots.load({false,100})==choice,"Manual boundary slots lost state");
+            for (int n=1;n<=11;++n) {auto value=saved;value["created_unix"]=1;value["vm"]["locals"]["round"]=n;
+                require(slots.save_quick(value)==SaveSlot{true,(n-1)%9+1},"Quick ring order changed");}
+            require(slots.load_latest_quick()["vm"]["locals"]["round"]==11,"Latest quick slot used timestamp instead of sequence");
+            require(slots.load({true,3})["vm"]["locals"]["round"]==3 && slots.load({true,1})["vm"]["locals"]["round"]==10,"Quick ring discarded wrong history");
+            auto summary=slots.list(c);require(summary["sequence"]==13 && summary["latest_quick"]==2,"Catalog generation mismatch");
+            require(summary["slots"][0]["status"]=="compatible" && summary["slots"][99]["status"]=="compatible","Valid slot metadata rejected");
+            const auto index_path=root/"catalog.json";const auto read_index=[&] {J j;std::ifstream(index_path)>>j;return j;};
+            const auto index=read_index();const auto original_file=root/index["entries"]["1"]["file"].get<std::string>();
+            auto bad=saved;bad["version"]=2;rejects([&]{slots.save_manual(1,bad);});require(read_index()==index && slots.load({false,1})==saved,"Failed write damaged old catalog/payload");
+            auto incompatible=saved;incompatible["binding"]["scripts"]["scr/start.sc"]=std::string(64,'d');slots.save_manual(2,incompatible);
+            require(slots.list(c)["slots"][1]["status"]=="incompatible","Package mismatch not reported");
+            put(original_file,J::object());summary=slots.list(c);require(summary["slots"][0]["status"]=="unreadable" && summary["slots"][99]["status"]=="compatible","Broken entry poisoned other slots");
+            put(original_file,saved);
+            const auto valid_index=read_index();
+            for (int kind=0;kind<5;++kind) {auto broken=valid_index;
+                if (kind==0) broken["version"]=2;
+                if (kind==1) broken["entries"]["1"]["file"]="../escape.json";
+                if (kind==2) broken["entries"]["2"]["file"]=broken["entries"]["1"]["file"];
+                if (kind==3) broken["latest_quick"]=9;
+                if (kind==4) broken["entries"]["2"]["sequence"]=broken["entries"]["1"]["sequence"];
+                put(index_path,broken);rejects([&]{slots.list(c);});rejects([&]{slots.save_manual(1,saved);});require(read_index()==broken,"Corrupt catalog silently reset");
+            }
+            auto exhausted=valid_index;exhausted["sequence"]=INT64_MAX;put(index_path,exhausted);
+            rejects([&]{slots.save_quick(saved);});require(read_index()==exhausted,"Sequence overflow modified catalog");
+            std::filesystem::remove(index_path);std::filesystem::create_symlink(root/"missing.json",index_path);
+            rejects([&]{slots.save_manual(1,saved);});require(std::filesystem::is_symlink(index_path),"Dangling catalog symlink overwritten");
+            std::filesystem::remove(index_path);put(index_path,valid_index);
+            const auto orphan=root/"objects/slot-orphan.json";put(orphan,saved);
+            std::vector<std::future<void>> writers;
+            for (int n=10;n<18;++n) writers.push_back(std::async(std::launch::async,[&,n]{SaveSlots(root).save_manual(n,saved);}));
+            for (auto& writer:writers) writer.get();
+            summary=slots.list(c);require(summary["sequence"]==22 && std::filesystem::exists(orphan),"Concurrent writes lost generations or swept unrelated objects");
+            for (int n=10;n<18;++n) require(slots.load({false,n})==saved,"Concurrent manual slot lost");
+            slots.save_manual(1,choice);require(!std::filesystem::exists(original_file) && slots.load({false,1})==choice,"Replacing slot failed cleanup or publication");
+            require(parse_save_slot("q9")==SaveSlot{true,9} && parse_save_slot("100")==SaveSlot{false,100},"Slot parser boundary");
+            for (const auto* id:{"0","101","q0","q10","latest","../1","1x"}) rejects([&]{parse_save_slot(id);});
         }
         std::cout<<"Save PASS: typed version/binding, repeated L0/NVL/literal text, audio position, choices/chain, effects, corruption and atomic write\n";
     } catch (const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;}

@@ -10,4 +10,6 @@ void restore_checkpoint(const Content&,const nlohmann::json&,ScriptRuntime&,Pres
 nlohmann::json read_checkpoint(const std::filesystem::path&);
 void write_checkpoint(const std::filesystem::path&,const nlohmann::json&);
 std::filesystem::path default_checkpoint_path();
+// Fast metadata/binding scan; full state/media validation still occurs on load.
+nlohmann::json checkpoint_metadata(const Content&,const nlohmann::json&);
 }

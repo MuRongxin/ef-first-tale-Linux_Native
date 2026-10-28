@@ -1,4 +1,5 @@
 #include "app/application.hpp"
+#include "save/slots.hpp"
 #include <charconv>
 #include <iostream>
 #include <stdexcept>
@@ -29,6 +30,10 @@ int main(int argc, char** argv) {
                              "  --audit-resources     Check all script image/audio/video references and package files; exit 2 for unresolved references\n"
                              "  --load-save FILE      Restore a native versioned save; implies saved script/variant\n"
                              "  --save-file FILE      Quick-save destination (F2 save / F3 load); with trace, save final settled message\n"
+                             "  --save-dir DIR        Managed slot directory (F2 rotates 9 quick slots unless --save-slot)\n"
+                             "  --save-slot N         Select manual slot 1..100 for F2/F3; with trace, save final settled message\n"
+                             "  --load-slot ID        Restore 1..100, q1..q9, or latest from the managed directory\n"
+                             "  --list-saves          Print managed slot metadata and package compatibility without a window\n"
                              "  --script ID           Run an imported script, e.g. scr/test.sc (strict by default)\n"
                              "  --variant e|j         Explicit timing variant; default e is a development choice\n"
                              "  --start-line N        Development entry at source line; does not restore preceding state\n"
@@ -61,6 +66,10 @@ int main(int argc, char** argv) {
             else if (arg == "--script") options.script = value();
             else if (arg == "--load-save") options.load_save = value();
             else if (arg == "--save-file") options.save_file = value();
+            else if (arg == "--save-dir") options.save_dir = value();
+            else if (arg == "--save-slot") options.save_slot = integer(1,100);
+            else if (arg == "--load-slot") { options.load_slot=value();if (options.load_slot!="latest") (void)ef::parse_save_slot(options.load_slot); }
+            else if (arg == "--list-saves") options.list_saves=true;
             else if (arg == "--variant") {
                 const auto variant = value();
                 if (variant != "e" && variant != "j") throw std::runtime_error("--variant must be e or j");
@@ -93,8 +102,14 @@ int main(int argc, char** argv) {
             else if (arg == "--smoke") options.smoke = true;
             else throw std::runtime_error("Unknown option: " + std::string(arg));
         }
-        if (!options.load_save.empty()) {
-            if (!options.script.empty() || options.start_line || options.text_preview || options.variant!='e') throw std::runtime_error("--load-save restores its own script/variant; do not combine with script/start/preview/variant overrides");
+        const bool loading=!options.load_save.empty() || !options.load_slot.empty();
+        const bool managed=!options.save_dir.empty() || options.save_slot || !options.load_slot.empty() || options.list_saves;
+        if (!options.load_save.empty() && !options.load_slot.empty()) throw std::runtime_error("Choose --load-save or --load-slot");
+        if (managed && !options.save_file.empty()) throw std::runtime_error("--save-file cannot be combined with managed slots");
+        if (options.list_saves && (loading || !options.script.empty() || options.save_slot || options.text_preview || options.trace_messages || options.start_line || options.silent || options.frames || options.validate || options.smoke || options.audit_scripts || options.audit_resources || !options.screenshot.empty()))
+            throw std::runtime_error("--list-saves requires a separate read-only invocation");
+        if (loading) {
+            if (!options.script.empty() || options.start_line || options.text_preview || options.variant!='e') throw std::runtime_error("Saved sessions restore their own script/variant; do not combine with script/start/preview/variant overrides");
         }
         if ((options.width == 0) != (options.height == 0))
             throw std::runtime_error("--width and --height must be used together");
@@ -102,8 +117,8 @@ int main(int argc, char** argv) {
             throw std::runtime_error("--smoke requires a normal window and cannot combine with --frames/--validate-content");
         if (!options.screenshot.empty() && (!(options.frames || options.smoke) || options.validate))
             throw std::runtime_error("--screenshot requires --frames or --smoke");
-        if ((options.text_preview || options.trace_messages || options.start_line || options.silent || !options.save_file.empty()) && options.script.empty() && options.load_save.empty()) throw std::runtime_error("Script options require --script ID");
-        if (((!options.script.empty() || !options.load_save.empty()) && (options.smoke || options.validate || options.audit_scripts || options.audit_resources)) ||
+        if ((options.text_preview || options.trace_messages || options.start_line || options.silent || !options.save_file.empty() || options.save_slot || (!options.save_dir.empty() && !options.list_saves)) && options.script.empty() && !loading) throw std::runtime_error("Script options require --script ID");
+        if (((!options.script.empty() || loading) && (options.smoke || options.validate || options.audit_scripts || options.audit_resources)) ||
             (options.trace_messages && (options.frames || !options.screenshot.empty())))
             throw std::runtime_error("Conflicting script/validation/window smoke options");
         if ((options.audit_resources || options.audit_scripts) && (options.smoke || options.validate || options.frames || options.maximized || options.fullscreen || !options.screenshot.empty() || (options.audit_resources && options.audit_scripts)))

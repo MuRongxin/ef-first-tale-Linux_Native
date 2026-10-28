@@ -1,16 +1,13 @@
 #include "save/checkpoint.hpp"
+#include "save/json_file.hpp"
 #include "core/utf8.hpp"
 #include <algorithm>
 #include <chrono>
-#include <cerrno>
 #include <cmath>
 #include <cstdlib>
-#include <fstream>
 #include <limits>
 #include <set>
 #include <stdexcept>
-#include <fcntl.h>
-#include <unistd.h>
 
 namespace ef {
 namespace {
@@ -268,24 +265,22 @@ std::filesystem::path default_checkpoint_path() {
     throw std::runtime_error("Cannot locate save directory; use --save-file FILE");
 }
 nlohmann::json read_checkpoint(const std::filesystem::path& path) {
-    require(std::filesystem::file_size(path)<=max_bytes,"Save exceeds 16 MiB");std::ifstream input(path,std::ios::binary);require(static_cast<bool>(input),"Cannot open save");
-    std::vector<std::set<std::string>> keys;
-    auto callback=[&](int depth,J::parse_event_t event,J& value) {
-        require(depth<=64,"Save nesting budget exceeded");
-        if (event==J::parse_event_t::object_start) keys.emplace_back();
-        else if (event==J::parse_event_t::key) require(keys.back().insert(value.get<std::string>()).second,"Duplicate save key");
-        else if (event==J::parse_event_t::object_end) keys.pop_back();
-        return true;
-    };
-    auto result=J::parse(input,callback);header(result);return result;
+    auto result=read_json_file(path,max_bytes);header(result);return result;
 }
 void write_checkpoint(const std::filesystem::path& path,const nlohmann::json& j) {
-    header(j);const auto data=j.dump(2)+'\n';require(data.size()<=max_bytes,"Save exceeds 16 MiB");
-    if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path());
-    auto temporary=path.string()+".tmp.XXXXXX";const int fd=mkstemp(temporary.data());require(fd>=0,"Cannot create temporary save");bool open=true;
-    try {std::size_t done=0;while (done<data.size()) {const auto n=::write(fd,data.data()+done,data.size()-done);if (n<0 && errno==EINTR) continue;require(n>0,"Cannot write save");done+=static_cast<std::size_t>(n);}
-        require(::fsync(fd)==0,"Cannot sync save");const int closed=::close(fd);open=false;require(closed==0,"Cannot close save");
-        std::filesystem::rename(temporary,path);const auto parent=path.parent_path().empty() ? std::filesystem::path(".") : path.parent_path();const int dir=::open(parent.c_str(),O_RDONLY|O_DIRECTORY);if (dir>=0) {::fsync(dir);::close(dir);}
-    } catch (...) {if (open) ::close(fd);std::error_code ignored;std::filesystem::remove(temporary,ignored);throw;}
+    header(j);atomic_write_json(path,j,max_bytes);
+}
+nlohmann::json checkpoint_metadata(const Content& c,const nlohmann::json& j) {
+    header(j);const auto& vm=j.at("vm");
+    const auto program=string(vm.at("program"),1024);require(!program.empty(),"Missing saved program");
+    const auto variant=string(vm.at("variant"),1);require(variant=="e" || variant=="j","Invalid saved timing variant");
+    const auto state=string(vm.at("state"),16);require(state=="message" || state=="choices","Invalid saved pause state");
+    const auto& a=vm.at("anchor");object(a,{"script","source_line","dialogue_id"});
+    (void)string(a.at("script"),1024);(void)integer(a.at("source_line"),1,INT64_MAX);
+    if (state=="message") (void)integer(a.at("dialogue_id"),0,65535);else require(a.at("dialogue_id").is_null(),"Invalid choice anchor");
+    const auto m=message(vm.at("message"));std::string excerpt=m ? m->text : "";
+    if (excerpt.size()>192) {std::size_t n=192;while (n && (static_cast<unsigned char>(excerpt[n])&0xc0)==0x80) --n;excerpt.resize(n);}
+    return {{"created_unix",j.at("created_unix")},{"program",program},{"variant",variant},{"pause",state},{"anchor",a},
+        {"speaker",m ? MessageUI::display_name(m->name) : ""},{"excerpt",excerpt},{"compatible",j.at("binding")==binding(c)}};
 }
 }

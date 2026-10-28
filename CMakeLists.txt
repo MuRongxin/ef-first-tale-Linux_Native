@@ -16,6 +16,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_
 configure_file(src/script/script_ops.hpp.in generated/script_ops.hpp @ONLY)
 
 add_library(ef_core
+    src/save/json_file.cpp
+    src/save/slots.cpp
     src/save/checkpoint.cpp
     src/settings/font_settings.cpp
     src/settings/window_settings.cpp

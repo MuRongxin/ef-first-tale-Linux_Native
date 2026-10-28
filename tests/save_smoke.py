@@ -64,9 +64,10 @@ def main():
         code = x.XKeysymToKeycode(display,x.XStringToKeysym(name.encode()))
         xt.XTestFakeKeyEvent(display,code,1,0); xt.XTestFakeKeyEvent(display,code,0,0); x.XFlush(display)
 
-    def run(name, callback, frames=100, screenshot=None):
+    def run(name, callback, frames=100, screenshot=None, managed=False):
         cmd = [str(args.binary),'--content',str(out),'--script','scr/save.sc','--silent','--text-speed','0',
-               '--save-file',str(slot),'--frames',str(frames),'--window-config',str(out/'window.json'),'--width','1000','--height','750']
+               '--frames',str(frames),'--window-config',str(out/'window.json'),'--width','1000','--height','750']
+        cmd += ['--save-dir',str(out/'managed')] if managed else ['--save-file',str(slot)]
         if screenshot:
             cmd += ['--screenshot',str(screenshot)]
         p = subprocess.Popen(cmd,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -153,7 +154,35 @@ def main():
         invalid = subprocess.run([str(args.binary),'--content',str(out),'--load-save',str(out/'empty-program.json'),'--trace-messages','1'],
                                  env=env,capture_output=True,timeout=10)
         assert invalid.returncode==1, invalid.stderr.decode(errors='replace')
-        print('Save UI PASS: F2/F3, repeated-L0 NVL/literal text pixels, corrupt/missing-image load isolation, choice state and CLI restart')
+        managed_root=out/'managed'
+        shutil.rmtree(managed_root,ignore_errors=True)
+        def quick_ring(step,data):
+            if step==0 and ready(data,4): key('F2');return 1
+            if 1<=step<=10 and f'[save] saved slot q{(step-1)%9+1}'.encode() in data:
+                if step<10: key('F2');return step+1
+                key('F3');return 11
+            if step==11 and b'[save] loaded latest quick slot' in data: key('Escape');return 12
+            return step
+        assert run('managed-quick',quick_ring,frames=300,managed=True)==12
+        catalog=json.loads((managed_root/'catalog.json').read_text())
+        assert catalog['sequence']==10 and catalog['latest_quick']==1 and len(catalog['entries'])==9
+        assert len(list((managed_root/'objects').glob('slot-*.json')))==9
+        def cli(*flags,ok=True):
+            result=subprocess.run([str(args.binary),'--content',str(out),*map(str,flags)],env=env,capture_output=True,timeout=15)
+            assert (result.returncode==0)==ok, (flags,result.stdout,result.stderr)
+            return result.stdout
+        summary=json.loads(cli('--save-dir',managed_root,'--list-saves'))
+        assert len(summary['slots'])==109 and sum(r['status']=='compatible' for r in summary['slots'])==9
+        cli('--save-dir',managed_root,'--load-slot','latest','--trace-messages','1')
+        assert json.loads((managed_root/'catalog.json').read_text())==catalog, 'Reading changed quick history'
+        cli('--load-save',original,'--save-dir',managed_root,'--save-slot','100','--trace-messages','1')
+        cli('--save-dir',managed_root,'--load-slot','100','--trace-messages','1')
+        assert json.loads((managed_root/'catalog.json').read_text())['sequence']==11
+        for flags in [('--save-slot','101'),('--load-slot','q10'),('--save-file',slot,'--save-dir',managed_root),('--list-saves','--script','scr/save.sc')]:
+            cli(*flags,ok=False)
+        absent=out/'absent-slots';shutil.rmtree(absent,ignore_errors=True)
+        assert json.loads(cli('--save-dir',absent,'--list-saves'))['sequence']==0 and not absent.exists()
+        print('Save UI PASS: F2/F3, repeated-L0 NVL/literal text pixels, corrupt/missing-image load isolation, choice state, 9-slot quick rotation, manual slot 100, read-only listing and CLI restart')
     finally:
         x.XCloseDisplay(display)
 
