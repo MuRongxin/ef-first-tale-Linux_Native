@@ -218,6 +218,11 @@ ScriptRuntime::ScriptRuntime(Loader loader, Resolver resolver, std::string entry
         pc_ = static_cast<std::size_t>(it-program_->instructions.begin());
     }
 }
+void ScriptRuntime::initialize_globals(const std::map<std::string,std::int64_t>& values) {
+    if (pc_ || message_serial_ || state_!=ScriptState::running || !globals_.empty() || !variables_.empty())
+        throw std::runtime_error("Session bootstrap requires a fresh runtime");
+    globals_=values;
+}
 void ScriptRuntime::update_local_variable(const std::string& name, std::int64_t value) {
     if (auto it=variables_.find(name); it!=variables_.end()) it->second=value;
 }

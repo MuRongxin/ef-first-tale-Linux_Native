@@ -1,4 +1,5 @@
 #include "app/application.hpp"
+#include "app/chapters.hpp"
 #include "save/slots.hpp"
 #include <charconv>
 #include <iostream>
@@ -26,6 +27,7 @@ int main(int argc, char** argv) {
             if (arg == "--help" || arg == "-h") {
                 std::cout << "ef_native --content content [options]\n"
                              "  --validate-content    Decode every declared image and validate scene/font without a window\n"
+                             "  --audit-gallery       Print CG groups, all variants, original thumbnail mappings and exclusions\n"
                              "  --audit-scripts       Parse/compile all imported scripts (both e/j variants), print JSON\n"
                              "  --audit-resources     Check all script image/audio/video references and package files; exit 2 for unresolved references\n"
                              "  --load-save FILE      Restore a native versioned save; implies saved script/variant\n"
@@ -35,6 +37,7 @@ int main(int argc, char** argv) {
                              "  --load-slot ID        Restore 1..100, q1..q9, or latest from the managed directory\n"
                              "  --list-saves          Print managed slot metadata and package compatibility without a window\n"
                              "  --script ID           Run an imported script, e.g. scr/test.sc (strict by default)\n"
+                             "  --chapter N           Fresh entry: 0 prologue, 1 chapter one, 2 interlude, 3 chapter two\n"
                              "  --variant e|j         Explicit timing variant; default e is a development choice\n"
                              "  --start-line N        Development entry at source line; does not restore preceding state\n"
                              "  --text-speed N        Development text speed, 0=instant, default 40 characters/second\n"
@@ -58,12 +61,14 @@ int main(int argc, char** argv) {
                              "  --frames N            Exit after N rendered frames\n"
                              "  --smoke               Check normal -> borderless -> restored tier transitions\n"
                              "  --screenshot FILE     Write final frame as PPM (requires --frames or --smoke)\n"
-                             "Keys: F2 quick save, F3 quick load; drop font file to preview; F5 text appearance; F6 next collection face; F7/F8 smaller/larger; F9 default.\n"
-                             "      F11 borderless, F10 maximize/restore, R reload content, Esc leave fullscreen/exit.\n";
+                             "Keys: F2 quick save, F3 quick load; F4/right-click save menu, F12 load menu; drop font file to preview; F5 text appearance; F6 next collection face; F7/F8 smaller/larger; F9 default.\n"
+                             "      Default startup opens the title. Esc confirms return to title in normal play; F11 borderless, F10 maximize/restore.\n"
+                             "      Explicit --script/--load-save/--load-slot keep development direct-entry behavior.\n";
                 return 0;
             }
             if (arg == "--content") options.content = value();
-            else if (arg == "--script") options.script = value();
+            else if (arg == "--script") {if (!options.script.empty()) throw std::runtime_error("Choose one script or chapter entry");options.script = value();}
+            else if (arg == "--chapter") {if (!options.script.empty()) throw std::runtime_error("Choose one script or chapter entry");options.script=ef::chapters.at(static_cast<std::size_t>(integer(0,3))).script;options.chapter_entry=true;}
             else if (arg == "--load-save") options.load_save = value();
             else if (arg == "--save-file") options.save_file = value();
             else if (arg == "--save-dir") options.save_dir = value();
@@ -89,6 +94,7 @@ int main(int argc, char** argv) {
             else if (arg == "--text-preview") options.text_preview = true;
             else if (arg == "--audit-scripts") options.audit_scripts = true;
             else if (arg == "--audit-resources") options.audit_resources = true;
+            else if (arg == "--audit-gallery") options.audit_gallery = true;
             else if (arg == "--trace-messages") options.trace_messages = integer(1, 100000);
             else if (arg == "--screenshot") options.screenshot = value();
             else if (arg == "--width") options.width = integer(320, 16384);
@@ -102,7 +108,10 @@ int main(int argc, char** argv) {
             else if (arg == "--smoke") options.smoke = true;
             else throw std::runtime_error("Unknown option: " + std::string(arg));
         }
+        if (options.audit_gallery && (options.audit_scripts || options.audit_resources || options.validate || options.smoke || options.frames || !options.script.empty() || !options.load_save.empty() || !options.load_slot.empty() || options.list_saves || options.save_slot || !options.save_file.empty() || options.fullscreen || options.maximized || !options.screenshot.empty()))
+            throw std::runtime_error("--audit-gallery requires a separate headless invocation");
         const bool loading=!options.load_save.empty() || !options.load_slot.empty();
+        if (options.chapter_entry && (options.start_line || options.text_preview)) throw std::runtime_error("Chapter entry requires strict execution from the first instruction");
         const bool managed=!options.save_dir.empty() || options.save_slot || !options.load_slot.empty() || options.list_saves;
         if (!options.load_save.empty() && !options.load_slot.empty()) throw std::runtime_error("Choose --load-save or --load-slot");
         if (managed && !options.save_file.empty()) throw std::runtime_error("--save-file cannot be combined with managed slots");
@@ -117,7 +126,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("--smoke requires a normal window and cannot combine with --frames/--validate-content");
         if (!options.screenshot.empty() && (!(options.frames || options.smoke) || options.validate))
             throw std::runtime_error("--screenshot requires --frames or --smoke");
-        if ((options.text_preview || options.trace_messages || options.start_line || options.silent || !options.save_file.empty() || options.save_slot || (!options.save_dir.empty() && !options.list_saves)) && options.script.empty() && !loading) throw std::runtime_error("Script options require --script ID");
+        if ((options.text_preview || options.trace_messages || options.start_line || !options.save_file.empty() || options.save_slot) && options.script.empty() && !loading) throw std::runtime_error("Script options require --script ID");
         if (((!options.script.empty() || loading) && (options.smoke || options.validate || options.audit_scripts || options.audit_resources)) ||
             (options.trace_messages && (options.frames || !options.screenshot.empty())))
             throw std::runtime_error("Conflicting script/validation/window smoke options");
@@ -125,7 +134,7 @@ int main(int argc, char** argv) {
             throw std::runtime_error("Audit options require a separate headless invocation");
         return ef::run(options);
     } catch (const std::exception& e) {
-        std::cerr << "ef_native: " << e.what() << '\n';
+        std::cerr << "ef_native: " << e.what() << "\n\n" << std::flush;
         return 1;
     }
 }

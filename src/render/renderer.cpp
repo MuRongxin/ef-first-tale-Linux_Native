@@ -127,12 +127,12 @@ Renderer::Renderer() {
         if (status != GLEW_OK && !core_without_glx)
             throw std::runtime_error("GLEW initialization (" + std::to_string(status) + "): " +
                                      reinterpret_cast<const char*>(glewGetErrorString(status)));
-        if (core_without_glx) std::cerr << "[video] Using SDL EGL/core context without GLX extensions\n";
+        if (core_without_glx) std::cerr << "[video] Using SDL EGL/core context without GLX extensions\n" << '\n' << std::flush;
         // GLEW probes a legacy extension enum on some core contexts.
         while (glGetError() != GL_NO_ERROR) {}
         if (!GLEW_VERSION_3_3) throw std::runtime_error("OpenGL 3.3 Core is required");
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size_);
-        std::cout << "OpenGL " << glGetString(GL_VERSION) << "; max_texture=" << max_texture_size_ << '\n';
+        std::cout << "OpenGL " << glGetString(GL_VERSION) << "; max_texture=" << max_texture_size_ << "\n\n" << std::flush;
         constexpr const char* vertex_source = R"(#version 330 core
 layout(location = 0) in vec2 position;
 uniform vec4 rect;
@@ -495,16 +495,20 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
                 cache_bytes += bytes;
             } catch (const std::exception& e) {
                 if (!capacity_conflict) rejected.insert(path);
-                std::cerr << "[asset fallback] " << path << ": " << e.what() << '\n';
+                std::cerr << "[asset fallback] " << path << ": " << e.what() << "\n\n" << std::flush;
                 continue;
             }
         }
-        const auto report = asset + ':' + std::to_string(static_cast<int>(tier));
+        const auto report = asset + ':' + std::to_string(static_cast<int>(tier)) + ':' + std::to_string(candidate.tier);
         if (reported_.insert(report).second) {
             std::cout << "asset " << asset << " requested=" << static_cast<int>(tier)
                       << " selected=" << candidate.tier << " pixels=" << candidate.width << 'x' << candidate.height
-                      << " design=" << content.asset(asset).width << 'x' << content.asset(asset).height << '\n';
-            if (candidate.tier != static_cast<int>(tier)) std::cerr << "[asset fallback] " << asset << " uses tier " << candidate.tier << '\n';
+                      << " requested_scale=" << static_cast<int>(tier) << "x actual_scale=" << candidate.tier << "x"
+                      << " design=" << content.asset(asset).width << 'x' << content.asset(asset).height
+                      << " texture_MiB=" << static_cast<double>(found->second.bytes)/(1024*1024)
+                      << " fallback=" << (candidate.tier != static_cast<int>(tier) ? "yes" : "no")
+                      << " file=" << content.resolve(candidate.path) << "\n\n"<<std::flush;
+            if (candidate.tier != static_cast<int>(tier)) std::cerr << "[asset fallback] " << asset << " uses tier " << candidate.tier << "\n\n" << std::flush;
         }
         found->second.used = ++clock_;
         return found->second;
@@ -672,6 +676,22 @@ void main() {
     checked_gl("Render shake canvas");
 }
 
+Image Renderer::save_thumbnail() const {
+    StageState restore;
+    if (restore.viewport[2]<=0 || restore.viewport[3]<=0) throw std::runtime_error("Empty thumbnail viewport");
+    Target target;target.resize(100,75);
+    glDisable(GL_SCISSOR_TEST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER,static_cast<GLuint>(restore.draw));
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER,target.framebuffer);
+    const auto& v=restore.viewport;
+    glBlitFramebuffer(v[0],v[1],v[0]+v[2],v[1]+v[3],0,0,100,75,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER,target.framebuffer);
+    Image image{100,75,std::vector<std::uint8_t>(30000)};
+    glReadPixels(0,0,100,75,GL_RGBA,GL_UNSIGNED_BYTE,image.rgba.data());
+    checked_gl("Save thumbnail capture");
+    for (int y=0;y<37;++y) for (int x=0;x<400;++x) std::swap(image.rgba[static_cast<std::size_t>(y*400+x)],image.rgba[static_cast<std::size_t>((74-y)*400+x)]);
+    return image;
+}
 void Renderer::capture(const std::filesystem::path& path, int width, int height) const {
     if (width <= 0 || height <= 0) throw std::runtime_error("Cannot capture an empty framebuffer");
     const auto stride = static_cast<std::size_t>(width) * 3;

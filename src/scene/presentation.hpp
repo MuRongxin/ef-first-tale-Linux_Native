@@ -41,6 +41,7 @@ public:
     const std::string& transition_mask() const { return active_mask_; }
     AudioMixer& mixer() { return mixer_; }
     void realtime_audio(bool enabled) { realtime_ = enabled; }
+    void set_logging(bool enabled) { logging_ = enabled; }
     // Movie decoding lives in the application (FFmpeg); presentation only records the
     // request and blocks the script until the host reports completion.
     void set_movie_supported(bool supported) { movie_supported_ = supported; }
@@ -60,6 +61,7 @@ private:
     std::array<std::string,4> playing_ids_;
     std::array<bool,4> playing_loops_{};
     bool realtime_{};
+    bool logging_{}; // Control-thread diagnostics only; never used by the audio callback.
     std::optional<Snow> snow_;
     std::optional<Walking> walking_;
     std::optional<Cutin> cutin_;

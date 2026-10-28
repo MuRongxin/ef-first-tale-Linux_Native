@@ -32,6 +32,17 @@ int main() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             if (output.failed() || mixer.playing(AudioChannel::bgm)) throw std::runtime_error("Audio stream did not complete outgoing fades");
             mixer.collect_finished();
+            mixer.play(AudioChannel::bgm,clip,true);
+            mixer.set_gain(AudioChannel::bgm,0,2);
+            output.pause(true);
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            const auto held=mixer.gain(AudioChannel::bgm);
+            std::this_thread::sleep_for(std::chrono::milliseconds(120));
+            if (mixer.gain(AudioChannel::bgm)!=held) throw std::runtime_error("Paused menu audio advanced its mixer clock");
+            output.pause(false);
+            for (int n=0;n<100 && mixer.gain(AudioChannel::bgm)==held;++n) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (mixer.gain(AudioChannel::bgm)>=held) throw std::runtime_error("Closing menu did not resume audio");
+            mixer.stop_all();
         }
         if (SDL_WasInit(SDL_INIT_AUDIO)) throw std::runtime_error("Audio subsystem reference leaked");
         std::cout << "Audio output PASS: disabled mode and silent SDL device callback/lifecycle\n";

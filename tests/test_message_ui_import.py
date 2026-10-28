@@ -56,6 +56,20 @@ class MessageUIImportTests(unittest.TestCase):
         self.assertNotEqual(updated["message_ui"], replacement["message_ui"])
         self.assertEqual((self.out / updated["message_ui"]).read_bytes(), previous_ui)
 
+    def test_save_menu_layout_is_published_without_changing_save_binding(self):
+        save_ui = json.loads((ROOT / "examples/save.ui.json").read_text())
+        (self.project / "examples/save.ui.json").write_text(json.dumps(save_ui))
+        updated = refresh_message_ui(self.project, self.out)
+        self.assertEqual(json.loads((self.out / updated["save_ui"]).read_text()), save_ui)
+        self.assertEqual(updated["scripts"], self.index["scripts"])
+        self.assertEqual(updated["view"], self.index["view"])
+        first_path = updated["save_ui"]
+        save_ui["manual_pages"] = 9
+        (self.project / "examples/save.ui.json").write_text(json.dumps(save_ui))
+        updated = refresh_message_ui(self.project, self.out)
+        self.assertNotEqual(first_path, updated["save_ui"])
+        self.assertEqual(json.loads((self.out / first_path).read_text())["manual_pages"], 10)
+
     def test_missing_resources_and_escaped_index_preserve_entry(self):
         self.manifest["images"].pop(self.ui["advance"]["asset"])
         self.publish_manifest()

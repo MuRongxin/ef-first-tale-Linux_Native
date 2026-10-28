@@ -1,4 +1,5 @@
 #include "save/checkpoint.hpp"
+#include "save/thumbnail.hpp"
 #include "save/json_file.hpp"
 #include "core/utf8.hpp"
 #include <algorithm>
@@ -82,7 +83,9 @@ Layer layer(const J& j,const Content& c) {
 J layers(const std::vector<Layer>& ls) {auto a=J::array();for (const auto& l:ls) a.push_back(layer(l));return a;}
 std::vector<Layer> layers(const J& j,const Content& c) {array(j,512);std::vector<Layer> ls;for (const auto& l:j) ls.push_back(layer(l,c));return ls;}
 void header(const J& j) {
-    object(j,{"format","version","created_unix","binding","vm","presentation","message_ui"});
+    auto fields=j;fields.erase("thumbnail");
+    object(fields,{"format","version","created_unix","binding","vm","presentation","message_ui"});
+    if (j.contains("thumbnail")) (void)decode_save_thumbnail(j.at("thumbnail"));
     require(j.at("format")=="ef.save" && integer(j.at("version"))==1,"Unsupported save format/version");
     (void)integer(j.at("created_unix"),0,INT64_MAX);
 }

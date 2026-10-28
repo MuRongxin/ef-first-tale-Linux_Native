@@ -17,6 +17,7 @@ configure_file(src/script/script_ops.hpp.in generated/script_ops.hpp @ONLY)
 
 add_library(ef_core
     src/save/json_file.cpp
+    src/save/thumbnail.cpp
     src/save/menu_layout.cpp
     src/save/slots.cpp
     src/save/checkpoint.cpp
@@ -26,6 +27,7 @@ add_library(ef_core
     src/core/utf8.cpp
     src/data/content.cpp
     src/data/image.cpp
+    src/data/gallery.cpp
     src/scene/scene.cpp
     src/scene/message_ui.cpp
     src/text/appearance.cpp
@@ -96,12 +98,13 @@ if(EF_BUILD_APP)
         target_link_libraries(ef_text_effects_tests PRIVATE ef_fonts SDL3::SDL3 OpenGL::GL GLEW::GLEW)
         ef_compile_options(ef_text_effects_tests)
     endif()
-    set(EF_NATIVE_SOURCES src/main.cpp src/app/application.cpp src/app/script_view.cpp src/render/renderer.cpp src/text/font.cpp)
+    set(EF_NATIVE_SOURCES src/main.cpp src/app/application.cpp src/app/script_view.cpp src/app/save_menu.cpp src/app/title_menu.cpp src/app/gallery.cpp src/render/renderer.cpp src/text/font.cpp)
     if(EF_FFMPEG_FOUND)
         list(APPEND EF_NATIVE_SOURCES src/video/movie_player.cpp)
     endif()
+    find_package(Threads REQUIRED)
     add_executable(ef_native ${EF_NATIVE_SOURCES})
-    target_link_libraries(ef_native PRIVATE ef_core ef_fonts ef_audio_output SDL3::SDL3 OpenGL::GL GLEW::GLEW Freetype::Freetype)
+    target_link_libraries(ef_native PRIVATE Threads::Threads ef_core ef_fonts ef_audio_output SDL3::SDL3 OpenGL::GL GLEW::GLEW Freetype::Freetype)
     if(EF_FFMPEG_FOUND)
         target_compile_definitions(ef_native PRIVATE EF_HAS_FFMPEG=1)
         target_include_directories(ef_native SYSTEM PRIVATE ${EF_FFMPEG_INCLUDE_DIR})
@@ -193,6 +196,10 @@ if(BUILD_TESTING)
     target_compile_definitions(ef_presentation_tests PRIVATE EF_AUDIO_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/audio-tone.ogg")
     ef_compile_options(ef_presentation_tests)
     add_test(NAME presentation COMMAND ef_presentation_tests)
+    add_executable(ef_gallery_tests tests/gallery_tests.cpp)
+    target_link_libraries(ef_gallery_tests PRIVATE ef_core)
+    ef_compile_options(ef_gallery_tests)
+    add_test(NAME gallery_catalog COMMAND ef_gallery_tests)
     add_executable(ef_core_tests tests/core_tests.cpp)
     target_link_libraries(ef_core_tests PRIVATE ef_core)
     ef_compile_options(ef_core_tests)
@@ -249,6 +256,19 @@ if(BUILD_TESTING)
                 --faces-binary $<TARGET_FILE:ef_font_faces_tests>)
         endif()
         if(EF_BUILD_APP AND EF_XVFB_RUN)
+            add_test(NAME gallery_flow COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/title_flow_smoke.py --binary $<TARGET_FILE:ef_native>
+                --out ${CMAKE_CURRENT_BINARY_DIR}/gallery-smoke --gallery-only)
+            set_tests_properties(gallery_flow PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
+            add_test(NAME title_flow COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/title_flow_smoke.py --binary $<TARGET_FILE:ef_native> --audio)
+            set_tests_properties(title_flow PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
+            if(EF_FFMPEG_FOUND)
+                add_test(NAME title_movie_return COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/title_flow_smoke.py --binary $<TARGET_FILE:ef_native>
+                    --out ${CMAKE_CURRENT_BINARY_DIR}/title-movie-return --audio --movie-return)
+                set_tests_properties(title_movie_return PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
+            endif()
             add_test(NAME save_ui COMMAND ${EF_XVFB_RUN} -a ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/save_smoke.py --binary $<TARGET_FILE:ef_native>)
             set_tests_properties(save_ui PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")

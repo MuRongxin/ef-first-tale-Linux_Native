@@ -9,8 +9,9 @@ struct Options {
     int movie_texture_cap{3200}; // max movie texture side; quality-first, lower saves upload
     bool fullscreen{}, maximized{}, validate{}, smoke{};
     std::string script;
+    bool chapter_entry{};
     char variant{'e'};
-    bool text_preview{}, audit_scripts{}, audit_resources{};
+    bool text_preview{}, audit_scripts{}, audit_resources{}, audit_gallery{};
     int trace_messages{}, start_line{};
     bool silent{};
     std::filesystem::path load_save, save_file, save_dir;

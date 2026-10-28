@@ -1,5 +1,8 @@
 # ef - the first tale — 存档数据 / 配置文件格式分析
 
+> 本文描述原版存档/配置事实。移植版采用 [所有内容默认开放](PRODUCT-DECISIONS.md) 的产品要求，不以原版解锁表、通关或已读记录限制章节与鉴赏入口。
+
+
 目标目录：`/home/lrxin/Downloads/ef - the first tale/save_cn/minori/ef - the first tale.(AA)/`
 游戏：**ef - the first tale**，minori 引擎（"nnl" / *nnl_ft*），可执行文件 `ef_first_en_AA.exe`
 （英文 MangaGamer 版）+ 中文化补丁（`ef_first_cn_AA.dll`），r18 补丁资源位于 `r18_cn/`。

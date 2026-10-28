@@ -5,6 +5,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <utility>
+#include <iostream>
 
 namespace ef {
 namespace {
@@ -29,6 +30,15 @@ int optional(const std::vector<std::string>& args, std::size_t index, int fallba
     return index >= args.size() ? fallback : args[index] == "*" ? 2 : number(args[index]);
 }
 double fade(int speed, float gain = 1) { return speed <= 0 ? 0 : 2.0 * gain / speed; }
+const char* channel_name(AudioChannel channel) {
+    switch (channel) {
+    case AudioChannel::bgm:return "BGM";
+    case AudioChannel::voice:return "VOICE";
+    case AudioChannel::se:return "SE";
+    case AudioChannel::se2:return "SE2";
+    }
+    return "unknown";
+}
 }
 std::vector<Layer> Presentation::current() const {
     auto result=walking_ ? walking_->layers(current_) : current_;
@@ -84,8 +94,12 @@ Layer Presentation::image(const std::string& name, bool r18) const {
     return result;
 }
 void Presentation::play(AudioChannel channel, const std::string& kind, const std::string& name, bool r18, bool loop, float gain, double fade_seconds, double fade_out_rate) {
+    const auto index=static_cast<std::size_t>(channel);
     if (name.empty() || name == "*") {
         mixer_.stop_current(channel, fade_seconds, fade_out_rate);
+        if (logging_ && !playing_ids_.at(index).empty())
+            std::cout<<"[audio] stop channel="<<channel_name(channel)<<" resource="<<playing_ids_.at(index)
+                     <<" fade_seconds="<<fade_seconds<<" fade_out_rate="<<fade_out_rate<<"\n\n"<<std::flush;
         playing_ids_.at(static_cast<std::size_t>(channel)).clear();
         playing_loops_.at(static_cast<std::size_t>(channel))=false;
         return;
@@ -93,7 +107,16 @@ void Presentation::play(AudioChannel channel, const std::string& kind, const std
     const auto& resource = content_.resource(kind, name, r18);
     // Decode only on the control thread. The mixer retains a bounded pool of current/outgoing clips.
     auto clip = decoder_(content_.resolve(resource.path));
-    mixer_.play(channel, std::move(clip), loop, gain, 0, fade_seconds, 0, fade_out_rate, resource.id);
+    mixer_.play(channel, clip, loop, gain, 0, fade_seconds, 0, fade_out_rate, resource.id);
+    if (logging_) {
+        std::cout<<"[audio] play channel="<<channel_name(channel)<<" resource="<<resource.id
+                 <<" previous="<<(playing_ids_.at(index).empty() ? "none" : playing_ids_.at(index))
+                 <<" source_rate="<<clip->sample_rate<<"Hz source_channels="<<clip->channels
+                 <<" duration_seconds="<<clip->duration()<<" loop="<<(loop ? "yes" : "no")
+                 <<" gain="<<gain<<" fade_in_seconds="<<fade_seconds<<" fade_out_rate="<<fade_out_rate
+                 <<" clock="<<(realtime_ ? "audio-device" : "silent")<<" file="<<content_.resolve(resource.path)
+                 <<"\n\n"<<std::flush;
+    }
     playing_ids_.at(static_cast<std::size_t>(channel)) = resource.id;
     playing_loops_.at(static_cast<std::size_t>(channel))=loop;
 }
@@ -321,6 +344,9 @@ bool Presentation::command(const Instruction& instruction) {
             playing_ids_.at(channel_index) == content_.resource(bgm ? "bgm" : "se",args[0],r18).id;
         if (same_loop) {
             if (bgm) mixer_.set_gain(channel,gain,0,in_speed>0 ? in_speed/2.0 : 0);
+            if (logging_) std::cout<<"[audio] reuse channel="<<channel_name(channel)<<" resource="<<playing_ids_.at(channel_index)
+                                  <<" action="<<(bgm ? "set-gain" : "keep-loop")<<" gain="<<mixer_.gain(channel)
+                                  <<" requested_gain="<<gain<<" gain_rate="<<(bgm && in_speed>0 ? in_speed/2.0 : 0)<<"\n\n"<<std::flush;
             return true;
         }
         if (stop) play(channel,bgm ? "bgm" : "se",args[0],r18,false,0,0,out_speed>0 ? out_speed/2.0 : 0);

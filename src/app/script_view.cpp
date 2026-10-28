@@ -32,10 +32,17 @@ ScriptView::ScriptView(const Content& content, const Options& options)
         [this] { return presentation_.mixer().playing(AudioChannel::voice); },
         [this](const std::string& name,std::int64_t value) { presentation_.local_assignment(name,value); }});
     const auto index=content.read_json(content.script_index());
+    presentation_.set_logging(!options.text_preview);
+    if (options.chapter_entry) {
+        std::map<std::string,std::int64_t> globals{{"EYE_SEQ_DEFAULT",options.variant=='e' ? 3 : 2},{"censored",0}};
+        if (options.script!="scr/000_01mugai.sc") globals["ef_000"]=1;
+        if (options.script=="scr/200_01.sc") globals["ef_700"]=1;
+        runtime_.initialize_globals(globals);
+    }
     if (!options.text_preview && content.has_resource_catalog() && index.contains("message_ui"))
         message_ui_.emplace(content,index.at("message_ui").get<std::string>());
-    if (!options.text_preview) std::cout << "message-ui=" << (message_ui_ ? "imported" : "development") << '\n';
-    if (options.start_line) std::cerr << "[script] Development start line: preceding scene/variables are not restored\n";
+    if (!options.text_preview) std::cout << "message-ui=" << (message_ui_ ? "imported" : "development") << "\n\n" << std::flush;
+    if (options.start_line) std::cerr << "[script] Development start line: preceding scene/variables are not restored\n" << '\n' << std::flush;
     if (const auto* choice = choice_layer(); !choice || choice->height <= 0)
         throw std::runtime_error("Script view requires a script_choice text slot with positive row height");
     if (!options.text_preview) {
@@ -50,11 +57,17 @@ ScriptView::ScriptView(const Content& content, const Options& options)
     }
     if (!options.text_preview) template_.title = "ef · 严格剧本执行（开发布局）";
     std::cout << "script entry=" << options.script << " variant=" << options.variant
-              << " mode=" << (options.text_preview ? "text-preview" : "strict") << '\n';
+              << " mode=" << (options.text_preview ? "text-preview" : "strict") << "\n\n" << std::flush;
 }
 nlohmann::json ScriptView::checkpoint() const { return capture_checkpoint(content_,runtime_,presentation_,message_ui_ ? &*message_ui_ : nullptr); }
 void ScriptView::restore(const nlohmann::json& j) {
     restore_checkpoint(content_,j,runtime_,presentation_,message_ui_ ? &*message_ui_ : nullptr);
+    constexpr std::array<const char*,4> channels{"BGM","VOICE","SE","SE2"};
+    for (const auto& track:j.at("presentation").at("audio").at("tracks"))
+        std::cout<<"[audio] restored channel="<<channels.at(track.at("channel").get<std::size_t>())
+                 <<" resource="<<track.at("resource").get<std::string>()<<" position_frames="<<track.at("position")
+                 <<" loop="<<(track.at("loop").get<bool>() ? "yes" : "no")<<" gain="<<track.at("gain")
+                 <<" slot="<<track.at("slot")<<"\n\n"<<std::flush;
     elapsed_=ready_started_=0;reported_=0;last_message_=last_ready_=0;last_state_=ScriptState::running;
 }
 const Layer* ScriptView::choice_layer() const {
@@ -64,23 +77,23 @@ const Layer* ScriptView::choice_layer() const {
 void ScriptView::update(double seconds) {
     runtime_.update(seconds);
     elapsed_+=seconds;
-    while (reported_ < runtime_.diagnostics().size()) std::cerr << "[script] " << runtime_.diagnostics()[reported_++] << '\n';
+    while (reported_ < runtime_.diagnostics().size()) std::cerr << "[script] " << runtime_.diagnostics()[reported_++] << "\n\n" << std::flush;
     if (const auto& message = runtime_.message()) {
         const auto anchor = runtime_.message_serial();
         if (anchor != last_message_) {
             if (!options_.trace_messages)
-                std::cout << "message " << message->script << " L0=" << message->id << " source_line=" << message->source_line << std::endl;
+                std::cout << "message " << message->script << " L0=" << message->id << " source_line=" << message->source_line << "\n\n" << std::flush;
             last_message_ = anchor;
         }
         if (!options_.trace_messages && runtime_.message_complete() && anchor != last_ready_) {
-            std::cout << "message ready " << message->script << " L0=" << message->id << std::endl;
+            std::cout << "message ready " << message->script << " L0=" << message->id << "\n\n" << std::flush;
             last_ready_ = anchor;
             ready_started_=elapsed_;
         }
     }
     if (runtime_.state() != last_state_) {
-        if (runtime_.state() == ScriptState::choices) std::cout << "choices count=" << runtime_.choices().size() << std::endl;
-        if (runtime_.state() == ScriptState::ended) std::cout << "script ended" << std::endl;
+        if (runtime_.state() == ScriptState::choices) std::cout << "choices count=" << runtime_.choices().size() << "\n\n" << std::flush;
+        if (runtime_.state() == ScriptState::ended) std::cout << "script ended" << "\n\n" << std::flush;
         last_state_ = runtime_.state();
     }
 }

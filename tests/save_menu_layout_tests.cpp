@@ -1,4 +1,5 @@
 #include "save/menu_layout.hpp"
+#include "save/thumbnail.hpp"
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -10,7 +11,16 @@ template<class F> void rejects(F f) {try {f();} catch(const std::exception&) {re
 }
 int main() {
     try {
-        using namespace ef;nlohmann::json document;std::ifstream(EF_SAVE_UI_FIXTURE)>>document;const SaveMenuLayout layout(document);
+        using namespace ef;
+        Image thumbnail{100,75,std::vector<std::uint8_t>(30000,255)};
+        for (std::size_t n=0;n<thumbnail.rgba.size();n+=4) {thumbnail.rgba[n]=static_cast<std::uint8_t>(n%256);thumbnail.rgba[n+1]=0;}
+        const auto encoded=encode_save_thumbnail(thumbnail);
+        require(decode_save_thumbnail(encoded).rgba==thumbnail.rgba,"Thumbnail RGB orientation/roundtrip");
+        auto bad_thumb=encoded;bad_thumb["pixels"]="00";rejects([&]{(void)decode_save_thumbnail(bad_thumb);});
+        bad_thumb=encoded;bad_thumb["pixels"].get_ref<std::string&>()[0]='z';rejects([&]{(void)decode_save_thumbnail(bad_thumb);});
+        bad_thumb=encoded;bad_thumb["width"]=800;rejects([&]{(void)decode_save_thumbnail(bad_thumb);});
+        rejects([&]{(void)encode_save_thumbnail(Image{});});
+        nlohmann::json document;std::ifstream(EF_SAVE_UI_FIXTURE)>>document;const SaveMenuLayout layout(document);
         require(layout.cells()[0]==SaveMenuRect{31,27,375,126} && layout.cells()[9]==SaveMenuRect{425,451,769,549},"Native cell table changed");
         for (int n=0;n<10;++n) {
             const auto& r=layout.cells()[static_cast<std::size_t>(n)];

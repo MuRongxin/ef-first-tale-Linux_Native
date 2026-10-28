@@ -1,5 +1,9 @@
 #include "app/application.hpp"
 #include "app/script_view.hpp"
+#include "app/save_menu.hpp"
+#include "app/title_menu.hpp"
+#include "app/gallery.hpp"
+#include "save/thumbnail.hpp"
 #include "save/slots.hpp"
 #include "audio/output.hpp"
 #include "core/display.hpp"
@@ -60,7 +64,7 @@ public:
             }
             context = SDL_GL_CreateContext(handle);
             if (!context) throw std::runtime_error(std::string("SDL_GL_CreateContext: ") + SDL_GetError());
-            if (!SDL_GL_SetSwapInterval(1)) std::cerr << "[video] vsync unavailable; frame pacing enabled\n";
+            if (!SDL_GL_SetSwapInterval(1)) std::cerr << "[video] vsync unavailable; frame pacing enabled\n" << '\n' << std::flush;
         } catch (...) { cleanup(); throw; }
     }
     ~Window() { cleanup(); }
@@ -126,8 +130,13 @@ private:
 int run(const Options& requested) {
     auto options=requested;
     Content content(options.content);
+    if (options.audit_gallery) {std::cout<<GalleryCatalog(content).report().dump(2)<<'\n';return 0;}
+    const bool frontend=(options.script.empty() || options.chapter_entry) && options.load_save.empty() && options.load_slot.empty() &&
+        !options.validate && !options.smoke && !options.audit_scripts && !options.audit_resources &&
+        !content.script_index().empty() && std::filesystem::exists(content.resolve(content.script_index()));
+    bool title_active=frontend && options.script.empty();
     std::unique_ptr<SaveSlots> slots;
-    if (!options.save_dir.empty() || options.save_slot || !options.load_slot.empty() || options.list_saves)
+    if ((frontend && options.save_file.empty()) || !options.save_dir.empty() || options.save_slot || !options.load_slot.empty() || options.list_saves)
         slots=std::make_unique<SaveSlots>(options.save_dir.empty() ? default_save_directory() : options.save_dir);
     if (options.list_saves) {std::cout<<slots->list(content).dump(2)<<'\n';return 0;}
     std::optional<nlohmann::json> initial_save;
@@ -179,7 +188,7 @@ int run(const Options& requested) {
             if (script->runtime().message_serial() != last_message) {
                 last_message = script->runtime().message_serial();
                 const auto& message = *script->runtime().message();
-                std::cout << "message " << message.script << " L0=" << message.id << " source_line=" << message.source_line << '\n';
+                std::cout << "message " << message.script << " L0=" << message.id << " source_line=" << message.source_line << "\n\n" << std::flush;
                 ++messages;
                 if (messages==options.trace_messages && (!requested.save_file.empty() || requested.save_slot>0)) {
                     const auto serial=script->runtime().message_serial();
@@ -187,7 +196,7 @@ int run(const Options& requested) {
                     for (int n=0;!script->runtime().message_complete() && n<1000;++n) script->update(.1);
                     if (script->runtime().message_serial()!=serial) throw std::runtime_error("Trace save point advanced automatically; choose a manual message");
                     const auto target=save_session(script->checkpoint());
-                    std::cout<<"[save] saved "<<target<<'\n';
+                    std::cout<<"[save] saved "<<target<<'\n' << '\n' << std::flush;
                     break;
                 }
                 // Finish development typewriter text before requesting the next message.
@@ -197,13 +206,13 @@ int run(const Options& requested) {
                 throw std::runtime_error("Trace stopped before requested message count: choice or script end");
             if (script->runtime().state() == ScriptState::message && script->runtime().message_complete()) script->advance();
         }
-        std::cout << "Script trace PASS: " << messages << " messages\n";
+        std::cout << "Script trace PASS: " << messages << " messages\n" << '\n' << std::flush;
         return 0;
     }
     const auto font_config=options.font_config.empty() ? default_font_config() : options.font_config;
     FontSettings font_settings;
     try { font_settings=load_font_settings(font_config); }
-    catch (const std::exception& e) { std::cerr << "[font] Cannot read preferences; using defaults: " << e.what() << '\n'; }
+    catch (const std::exception& e) { std::cerr << "[font] Cannot read preferences; using defaults: " << e.what() << "\n\n" << std::flush; }
     if (options.default_font) font_settings={};
     if (options.font_file) { font_settings.file=*options.font_file; font_settings.face=0; }
     if (options.font_face) font_settings.face=*options.font_face;
@@ -222,28 +231,28 @@ int run(const Options& requested) {
         try { return std::make_unique<Font>(content,font_settings); }
         catch (const std::exception& e) {
             if (options.font_file || options.font_face || font_settings.file.empty()) throw;
-            std::cerr << "[font] Saved font unavailable; using packaged font: " << e.what() << '\n';
+            std::cerr << "[font] Saved font unavailable; using packaged font: " << e.what() << "\n\n" << std::flush;
             font_settings.file.clear(); font_settings.face=0;
             return std::make_unique<Font>(content,font_settings);
         }
     };
-    auto scene = script ? script->scene() : Scene::load(content);
+    auto scene = script ? script->scene() : title_active ? Scene{} : Scene::load(content);
     if (options.validate) {
         content.validate_images();
         auto font=create_font();
         font->validate(scene);
-        std::cout << "Content validation PASS: " << content.assets().size() << " images, " << scene.layers.size() << " layers\n";
+        std::cout << "Content validation PASS: " << content.assets().size() << " images, " << scene.layers.size() << " layers\n" << '\n' << std::flush;
         return 0;
     }
     std::filesystem::path window_config = options.window_config;
     if (window_config.empty()) {
         try { window_config = default_window_config(); }
-        catch (const std::exception& e) { std::cerr << "[window] Cannot locate window preferences: " << e.what() << '\n'; }
+        catch (const std::exception& e) { std::cerr << "[window] Cannot locate window preferences: " << e.what() << "\n\n" << std::flush; }
     }
     WindowSettings remembered;
     if (!window_config.empty()) {
         try { remembered = load_window_settings(window_config); }
-        catch (const std::exception& e) { std::cerr << "[window] Cannot read geometry; using auto: " << e.what() << '\n'; }
+        catch (const std::exception& e) { std::cerr << "[window] Cannot read geometry; using auto: " << e.what() << "\n\n" << std::flush; }
     }
     Window window(options, remembered);
     Renderer renderer;
@@ -252,10 +261,10 @@ int run(const Options& requested) {
     font->validate(scene);
     auto persist_font=[&]() {
         try { save_font_settings(font_config,font_settings); return true; }
-        catch (const std::exception& e) { std::cerr << "[font] Preview active but preferences were not saved: " << e.what() << '\n'; return false; }
+        catch (const std::exception& e) { std::cerr << "[font] Preview active but preferences were not saved: " << e.what() << "\n\n" << std::flush; return false; }
     };
     if (font_override) persist_font();
-    std::cout << "font=" << font->name() << " face=" << font_settings.face << " size=" << std::lround(font_settings.scale*100) << "%\n";
+    std::cout << "font=" << font->name() << " face=" << font_settings.face << " size=" << std::lround(font_settings.scale*100) << "%\n" << '\n' << std::flush;
     Uint64 font_notice_until{};
     bool font_notice_error{}, font_notice_saved{true};
     auto change_font=[&](const FontSettings& candidate) {
@@ -269,10 +278,10 @@ int run(const Options& requested) {
             checked(SDL_SetWindowTitle(window.handle,title.c_str()),"Font preview title");
             font=std::move(replacement); font_settings=candidate;
             font_notice_saved=persist_font(); font_notice_error=false;
-            std::cout << "font applied=" << font->name() << " face=" << font_settings.face << " size=" << std::lround(font_settings.scale*100) << "%\n";
+            std::cout << "font applied=" << font->name() << " face=" << font_settings.face << " size=" << std::lround(font_settings.scale*100) << "%\n" << '\n' << std::flush;
         } catch (const std::exception& e) {
             font_notice_error=true;
-            std::cerr << "[font] Selection rejected; previous font retained: " << e.what() << '\n';
+            std::cerr << "[font] Selection rejected; previous font retained: " << e.what() << "\n\n" << std::flush;
         }
         font_notice_until=SDL_GetTicks()+5000;
     };
@@ -300,14 +309,23 @@ int run(const Options& requested) {
     bool checkpoint_clock_reset{};
     std::string checkpoint_notice;
     Uint64 checkpoint_notice_until{};
-    auto checkpoint_action=[&](bool save) {
+    SaveSlots menu_slots(options.save_dir.empty() ? default_save_directory() : options.save_dir);
+    std::unique_ptr<SaveMenu> save_menu;
+    TitleMenu title_menu;
+    std::unique_ptr<Gallery> gallery;
+    int confirmation{}; // 1 return to title, 2 exit
+    std::optional<bool> pending_menu;
+    bool pending_quick_save{};
+    nlohmann::json captured_thumbnail;
+    auto checkpoint_action=[&](bool save, const nlohmann::json* menu_data=nullptr) -> bool {
         try {
-            if (!script || options.text_preview) throw std::runtime_error("A strict game session is required");
+            if ((save && !script) || options.text_preview) throw std::runtime_error("A strict game session is required");
             if (save) {
-                const auto target=save_session(script->checkpoint());checkpoint_notice="进度已保存。";
-                std::cout<<"[save] saved "<<target<<std::endl;
+                auto data=script->checkpoint();if (!captured_thumbnail.is_null()) data["thumbnail"]=captured_thumbnail;
+                const auto target=save_session(data);checkpoint_notice="进度已保存。";
+                std::cout<<"[save] saved "<<target<<"\n\n" << std::flush;
             } else {
-                const auto [data,target]=load_session();auto candidate_options=options;
+                const auto [data,target]=menu_data ? std::pair<nlohmann::json,std::string>{*menu_data,"menu slot"} : load_session();auto candidate_options=options;
                 candidate_options.script=data.at("vm").at("program").get<std::string>();
                 const auto variant=data.at("vm").at("variant").get<std::string>();
                 if (variant!="e" && variant!="j") throw std::runtime_error("Invalid saved timing variant");
@@ -326,22 +344,164 @@ int run(const Options& requested) {
                 movie.reset();movie_started=0;
 #endif
                 audio.reset();script.swap(replacement);audio=std::move(replacement_audio);scene=std::move(replacement_scene);
+                title_active=false;
                 renderer.invalidate_scene();last_tier.reset();checkpoint_clock_reset=true;
-                checkpoint_notice="进度已恢复。";std::cout<<"[save] loaded "<<target<<std::endl;
+                checkpoint_notice="进度已恢复。";std::cout<<"[save] loaded "<<target<<"\n\n" << std::flush;
             }
         } catch (const std::exception& e) {
+            checkpoint_notice_until=SDL_GetTicks()+4000;
             checkpoint_notice=save ? "暂时无法保存，请等待对白或演出完成，并检查存档目录。" : "读档失败，当前进度已保留。";
-            std::cerr<<"[save] "<<e.what()<<std::endl;
+            std::cerr<<"[save] "<<e.what()<<"\n\n" << std::flush;return false;
         }
-        checkpoint_notice_until=SDL_GetTicks()+4000;
+        checkpoint_notice_until=SDL_GetTicks()+4000;return true;
     };
+    auto close_menu=[&] {save_menu.reset();if (audio) audio->pause(false);checkpoint_clock_reset=true;};
+    auto return_to_title=[&] {
+#ifdef EF_HAS_FFMPEG
+        movie.reset();movie_started=0;
+#endif
+        save_menu.reset();audio.reset();script.reset();
+        pending_menu.reset();pending_quick_save=false;captured_thumbnail=nullptr;
+        scene=Scene{};scene.title="ef - the first tale.";
+        renderer.clear_cache();renderer.invalidate_scene();last_tier.reset();
+        title_active=true;title_menu=TitleMenu{};checkpoint_clock_reset=true;
+        checkpoint_notice_until=0;
+        std::cout<<"[title] opened; session released"<<"\n\n" << std::flush;
+    };
+    auto start_chapter=[&](int index) {
+        try {
+            auto candidate_options=options;
+            candidate_options.script=chapters.at(static_cast<std::size_t>(index)).script;
+            candidate_options.chapter_entry=true;candidate_options.start_line=0;candidate_options.text_preview=false;
+            auto replacement=std::make_unique<ScriptView>(content,candidate_options);
+            auto replacement_scene=replacement->scene();font->validate(replacement_scene);
+            auto replacement_audio=std::make_unique<AudioOutput>(replacement->presentation().mixer(),!options.silent);
+            replacement->presentation().realtime_audio(replacement_audio->active());
+#ifdef EF_HAS_FFMPEG
+            replacement->presentation().set_movie_supported(true);
+            movie.reset();
+#endif
+            audio.reset();script=std::move(replacement);audio=std::move(replacement_audio);scene=std::move(replacement_scene);
+            title_active=false;renderer.invalidate_scene();last_tier.reset();checkpoint_clock_reset=true;
+            std::cout<<"[title] chapter "<<index<<" started"<<"\n\n" << std::flush;
+        } catch (const std::exception& e) {
+            checkpoint_notice="章节启动失败，请检查内容包。";checkpoint_notice_until=SDL_GetTicks()+4000;
+            std::cerr<<"[title] "<<e.what()<<"\n\n" << std::flush;
+        }
+    };
+    if (title_active) std::cout<<"[title] opened"<<"\n\n" << std::flush;
     while (running) {
         const auto frame_start = SDL_GetTicksNS();
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             window.track(event);
+            std::optional<Point> menu_point;
+            if (event.type==SDL_EVENT_MOUSE_BUTTON_DOWN || event.type==SDL_EVENT_MOUSE_BUTTON_UP || event.type==SDL_EVENT_MOUSE_MOTION) {
+                int ww{},wh{},pw{},ph{};SDL_GetWindowSize(window.handle,&ww,&wh);SDL_GetWindowSizeInPixels(window.handle,&pw,&ph);
+                const float x=event.type==SDL_EVENT_MOUSE_MOTION ? event.motion.x : event.button.x;
+                const float y=event.type==SDL_EVENT_MOUSE_MOTION ? event.motion.y : event.button.y;
+                if (ww>0 && wh>0) menu_point=fit_viewport(pw,ph).to_design(x*static_cast<float>(pw)/static_cast<float>(ww),y*static_cast<float>(ph)/static_cast<float>(wh));
+            }
+            if (confirmation) {
+                bool accept=false,cancel=false;
+                if (event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+                    accept=event.key.key==SDLK_RETURN || event.key.key==SDLK_Y;
+                    cancel=event.key.key==SDLK_ESCAPE || event.key.key==SDLK_N;
+                }
+                if (event.type==SDL_EVENT_MOUSE_BUTTON_UP && event.button.button==SDL_BUTTON_LEFT && menu_point) {
+                    accept=SaveMenuRect{240,310,390,355}.contains(*menu_point);
+                    cancel=SaveMenuRect{410,310,560,355}.contains(*menu_point);
+                }
+                if (accept) {const int action=confirmation;confirmation=0;if (action==2) running=false;else return_to_title();}
+                if (cancel) {confirmation=0;if (audio && !save_menu) audio->pause(false);checkpoint_clock_reset=true;std::cout<<"[title] confirmation cancelled"<<"\n\n" << std::flush;}
+                continue;
+            }
+            if (event.type==SDL_EVENT_QUIT || event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+                if (frontend) {confirmation=2;if (audio) audio->pause(true);continue;}
+            }
+            if (event.type==SDL_EVENT_QUIT || event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED) {running=false;continue;}
+            if (gallery && !(event.type==SDL_EVENT_KEY_DOWN && (event.key.key==SDLK_F10 || event.key.key==SDLK_F11))) {
+                if (gallery->event(event,menu_point)) {gallery.reset();std::cout<<"[gallery] returned to title\n"<<std::flush;}
+                continue;
+            }
+            if (title_active && !gallery && !save_menu && !(event.type==SDL_EVENT_KEY_DOWN && (event.key.key==SDLK_F10 || event.key.key==SDLK_F11))) {
+                const int action=title_menu.event(event,menu_point);
+                if (action==1 || action>=10) start_chapter(action==1 ? 0 : action-10);
+                if (action==2) {
+                    try {
+                        std::optional<SaveSlot> latest;std::int64_t sequence=-1;
+                        const auto listing=menu_slots.list(content);
+                        for (const auto& row:listing.at("slots")) {
+                            if (row.at("status")=="compatible" && row.at("sequence").get<std::int64_t>()>sequence) {
+                                latest=parse_save_slot(row.at("slot").get<std::string>());sequence=row.at("sequence").get<std::int64_t>();
+                            }
+                        }
+                        if (latest) {const auto data=menu_slots.load(*latest);checkpoint_action(false,&data);}
+                        else {checkpoint_notice="暂无可继续的存档。可选择新游戏或任意章节。";checkpoint_notice_until=SDL_GetTicks()+4000;std::cout<<"[title] no compatible save"<<"\n\n" << std::flush;}
+                    } catch (const std::exception& e) {checkpoint_notice="无法读取存档目录。";checkpoint_notice_until=SDL_GetTicks()+4000;std::cerr<<"[title] "<<e.what()<<"\n\n" << std::flush;}
+                }
+                if (action==3) {
+                    try {save_menu=std::make_unique<SaveMenu>(content,menu_slots,false,nullptr,false);std::cout<<"[save-menu] opened title load"<<"\n\n" << std::flush;}
+                    catch (const std::exception& e) {checkpoint_notice="读档菜单无法打开，请检查内容包。";checkpoint_notice_until=SDL_GetTicks()+4000;std::cerr<<"[title] "<<e.what()<<"\n\n" << std::flush;}
+                }
+                if (action==5) {
+                    try {renderer.clear_cache();gallery=std::make_unique<Gallery>(content);}
+                    catch (const std::exception& e) {checkpoint_notice="图鉴无法打开，请检查内容包。";checkpoint_notice_until=SDL_GetTicks()+4000;std::cerr<<"[gallery] "<<e.what()<<'\n';}
+                }
+                if (action==4) confirmation=2;
+                continue;
+            }
+            if (frontend && script && !save_menu && event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key==SDLK_ESCAPE) {
+                confirmation=1;if (audio) audio->pause(true);std::cout<<"[title] confirm return"<<"\n\n" << std::flush;continue;
+            }
+            if (save_menu && event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && (event.key.key==SDLK_F10 || event.key.key==SDLK_F11)) {
+                const auto flags=SDL_GetWindowFlags(window.handle);
+                if (event.key.key==SDLK_F11) checked(SDL_SetWindowFullscreen(window.handle,!(flags & SDL_WINDOW_FULLSCREEN)),"Toggle fullscreen");
+                else if (!(flags & SDL_WINDOW_FULLSCREEN)) {
+                    if (flags & SDL_WINDOW_MAXIMIZED) checked(SDL_RestoreWindow(window.handle),"Restore window");
+                    else checked(SDL_MaximizeWindow(window.handle),"Maximize window");
+                }
+                continue;
+            }
+            if (save_menu) {
+                std::optional<Point> point;
+                if (event.type==SDL_EVENT_MOUSE_BUTTON_DOWN || event.type==SDL_EVENT_MOUSE_BUTTON_UP) {
+                    int ww{},wh{},pw{},ph{};SDL_GetWindowSize(window.handle,&ww,&wh);SDL_GetWindowSizeInPixels(window.handle,&pw,&ph);
+                    if (ww>0 && wh>0) point=fit_viewport(pw,ph).to_design(event.button.x*static_cast<float>(pw)/static_cast<float>(ww),event.button.y*static_cast<float>(ph)/static_cast<float>(wh));
+                }
+                if (event.type==SDL_EVENT_QUIT || event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED) {running=false;continue;}
+                const auto result=save_menu->event(event,point);
+                if (result<0) close_menu();
+                if (result==2) {
+                    try {
+                        const bool saving=!save_menu->saving();nlohmann::json data;
+                        if (saving) {data=script->checkpoint();data["thumbnail"]=captured_thumbnail;}
+                        auto candidate=std::make_unique<SaveMenu>(content,menu_slots,saving,std::move(data));save_menu=std::move(candidate);
+                    } catch (const std::exception& e) {checkpoint_notice="当前演出尚不能保存。";checkpoint_notice_until=SDL_GetTicks()+4000;std::cerr<<"[save-menu] "<<e.what()<<"\n\n" << std::flush;}
+                }
+                if (result==1) {
+                    try {
+                        const auto id=save_menu->selected_slot();
+                        if (save_menu->saving()) {
+                            menu_slots.save_manual(id.number,save_menu->snapshot);
+                            checkpoint_notice="进度已保存。";checkpoint_notice_until=SDL_GetTicks()+4000;
+                            std::cout<<"[save] saved menu slot "<<save_slot_name(id)<<"\n\n" << std::flush;close_menu();
+                        } else {const auto data=menu_slots.load(id);if (checkpoint_action(false,&data)) close_menu();}
+                    } catch (const std::exception& e) {
+                        checkpoint_notice="存档操作失败，当前进度已保留。";checkpoint_notice_until=SDL_GetTicks()+4000;std::cerr<<"[save] "<<e.what()<<"\n\n" << std::flush;
+                    }
+                }
+                continue;
+            }
+            if (pending_menu || pending_quick_save) continue;
+            if (script && !options.text_preview &&
+                ((event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && (event.key.key==SDLK_F4 || event.key.key==SDLK_F12)) ||
+                 (event.type==SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button==SDL_BUTTON_RIGHT))) {
+                if (!script->presentation().movie_active()) pending_menu=!(event.type==SDL_EVENT_KEY_DOWN && event.key.key==SDLK_F12);
+                continue;
+            }
             if (script && event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && (event.key.key==SDLK_F2 || event.key.key==SDLK_F3)) {
-                checkpoint_action(event.key.key==SDLK_F2);continue;
+                if (event.key.key==SDLK_F2) pending_quick_save=true;else checkpoint_action(false);continue;
             }
             if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
 #ifdef EF_HAS_FFMPEG
@@ -414,7 +574,8 @@ int run(const Options& requested) {
                 }
                 break;
             case SDLK_R:
-                if (script) { std::cerr << "[script] Restart the application to reload a script session\n"; break; }
+                if (gallery) break;
+                if (script) { std::cerr << "[script] Restart the application to reload a script session\n" << '\n' << std::flush; break; }
                 try {
                     Content replacement(options.content);
                     auto replacement_scene = Scene::load(replacement);
@@ -425,8 +586,8 @@ int run(const Options& requested) {
                     font = std::move(replacement_font);
                     renderer.clear_cache();
                     last_tier.reset();
-                    std::cout << "Content reloaded\n";
-                } catch (const std::exception& e) { std::cerr << "[reload] " << e.what() << '\n'; }
+                    std::cout << "Content reloaded\n" << '\n' << std::flush;
+                } catch (const std::exception& e) { std::cerr << "[reload] " << e.what() << "\n\n" << std::flush; }
                 break;
             default: break;
             }
@@ -439,7 +600,7 @@ int run(const Options& requested) {
             checked(SDL_SetWindowTitle(window.handle, title.c_str()), "Window title");
             std::cout << "window tier=" << static_cast<int>(tier)
                       << " maximized=" << !!(flags & SDL_WINDOW_MAXIMIZED)
-                      << " fullscreen=" << !!(flags & SDL_WINDOW_FULLSCREEN) << '\n';
+                      << " fullscreen=" << !!(flags & SDL_WINDOW_FULLSCREEN) << "\n\n" << std::flush;
             last_tier = tier;
         }
         int steps=0;
@@ -450,7 +611,7 @@ int run(const Options& requested) {
         checked(SDL_GetWindowSizeInPixels(window.handle, &width, &height), "Framebuffer size");
         const auto view = fit_viewport(width, height);
         if (script) {
-            for (int i = 0; i < steps; ++i) script->update(FixedStep::interval);
+            if (!confirmation && !save_menu && !pending_menu && !pending_quick_save) for (int i = 0; i < steps; ++i) script->update(FixedStep::interval);
             scene = script->scene();
         }
 #ifdef EF_HAS_FFMPEG
@@ -467,17 +628,17 @@ int run(const Options& requested) {
                         texture_width, texture_height, audio ? audio.get() : nullptr);
                     movie_started = SDL_GetTicksNS();
                     std::cerr << "[movie] start " << request.asset << " dest " << request.width << "x" << request.height
-                              << " texture " << texture_width << "x" << texture_height << "\n";
+                              << " texture " << texture_width << "x" << texture_height << "\n" << '\n' << std::flush;
                 }
                 const auto now = SDL_GetTicksNS();
                 const double delta = movie_started == 0 ? 0.0 : static_cast<double>(now - movie_started) / 1e9;
                 movie_started = now;
-                movie->update(delta);
+                if (!confirmation) movie->update(delta);
                 if (movie->finished()) {
                     const std::string asset = request.asset;
                     presentation.finish_movie();
                     movie.reset();
-                    std::cerr << "[movie] finished " << asset << "\n";
+                    std::cerr << "[movie] finished " << asset << "\n" << '\n' << std::flush;
                 }
             } else if (movie) movie.reset();
         }
@@ -525,7 +686,7 @@ int run(const Options& requested) {
             }
             if (script && !options.text_preview && script->presentation().shaking())
                 renderer.shake(script->presentation().shake_frame(),script->presentation().shake_serial());
-            if (SDL_GetTicks()<font_notice_until) {
+            if (!pending_menu && !pending_quick_save && !save_menu && SDL_GetTicks()<font_notice_until) {
                 Layer background; background.kind=LayerKind::rectangle;
                 background.x=10; background.y=10; background.width=780; background.height=84;
                 background.color={0,0,0,0.9f}; renderer.rectangle(background);
@@ -536,6 +697,36 @@ int run(const Options& requested) {
                 notice.text+=font_notice_saved ? "\n有效设置已自动保存。" : "\n当前预览已生效，但配置保存失败，请检查配置目录。";
                 font->draw(renderer,notice,view.scale());
             }
+        }
+        if (pending_menu || pending_quick_save) {
+            try {
+                captured_thumbnail=encode_save_thumbnail(renderer.save_thumbnail());
+                if (pending_menu) {
+                    if (audio) audio->pause(true);
+                    nlohmann::json data;
+                    if (*pending_menu) {data=script->checkpoint();data["thumbnail"]=captured_thumbnail;}
+                    auto candidate=std::make_unique<SaveMenu>(content,menu_slots,*pending_menu,std::move(data));
+                    save_menu=std::move(candidate);
+                    std::cout<<"[save-menu] opened "<<(*pending_menu ? "save" : "load")<<"\n\n" << std::flush;
+                } else checkpoint_action(true);
+            } catch (const std::exception& e) {
+                if (audio && !save_menu) audio->pause(false);
+                checkpoint_notice="暂时无法打开存档菜单，请等待对白或演出完成，并更新 content 布局。";checkpoint_notice_until=SDL_GetTicks()+4000;
+                std::cerr<<"[save-menu] "<<e.what()<<"\n\n" << std::flush;
+            }
+            pending_menu.reset();pending_quick_save=false;
+        }
+        if (frontend && script && script->runtime().state()==ScriptState::ended && !confirmation) return_to_title();
+        if (title_active && !gallery) title_menu.draw(renderer,*font,view.scale());
+        if (gallery) gallery->draw(renderer,*font,tier,view.scale());
+        if (save_menu) save_menu->draw(renderer,*font,tier,view.scale());
+        if (confirmation) {
+            Layer box;box.kind=LayerKind::rectangle;box.width=800;box.height=600;box.color={0,0,0,.7f};renderer.rectangle(box);
+            box.x=200;box.y=235;box.width=400;box.height=140;box.color={.06f,.08f,.18f,1};renderer.rectangle(box);
+            Layer text;text.kind=LayerKind::text;text.x=225;text.y=260;text.width=355;text.font_size=20;
+            text.text=confirmation==1 ? "返回标题？未保存的进度将丢失。" : "退出游戏？";font->draw(renderer,text,view.scale());
+            text.x=245;text.y=320;text.width=150;text.font_size=18;text.text="确定（Enter）";font->draw(renderer,text,view.scale());
+            text.x=415;text.text="取消（Esc）";font->draw(renderer,text,view.scale());
         }
         if (SDL_GetTicks()<checkpoint_notice_until) {
             Layer box;box.kind=LayerKind::rectangle;box.x=10;box.y=100;box.width=780;box.height=42;box.color={0,0,0,.9f};renderer.rectangle(box);
@@ -553,7 +744,7 @@ int run(const Options& requested) {
                 smoke_phase = 2;
             } else if (smoke_phase == 2 && tier == AssetTier::x4 && !(flags & SDL_WINDOW_FULLSCREEN)) {
                 finished = true;
-                std::cout << "Window smoke PASS: 4x -> borderless 8x -> restored 4x\n";
+                std::cout << "Window smoke PASS: 4x -> borderless 8x -> restored 4x\n" << '\n' << std::flush;
             }
             if (SDL_GetTicksNS() - started > 15'000'000'000ULL) throw std::runtime_error("Window smoke timed out");
         }
@@ -565,9 +756,9 @@ int run(const Options& requested) {
     }
     if (!window_config.empty()) {
         try { save_window_settings(window_config, window.saveable_settings()); }
-        catch (const std::exception& e) { std::cerr << "[window] Geometry not saved: " << e.what() << '\n'; }
+        catch (const std::exception& e) { std::cerr << "[window] Geometry not saved: " << e.what() << "\n\n" << std::flush; }
     }
-    std::cout << "Exit: frames=" << frames << " fixed_ticks=" << ticks << '\n';
+    std::cout << "Exit: frames=" << frames << " fixed_ticks=" << ticks << "\n\n" << std::flush;
     return 0;
 }
 }

@@ -23,7 +23,10 @@ std::string output_error(const char* phase) {
 }
 }
 AudioOutput::AudioOutput(AudioMixer& mixer, bool enabled) : mixer_(mixer) {
-    if (!enabled) return;
+    if (!enabled) {
+        std::cout<<"[audio] output=silent rate="<<mixer_.sample_rate()<<"Hz channels=2 format=float32\n\n"<<std::flush;
+        return;
+    }
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) throw std::runtime_error(output_error("SDL audio initialization"));
     initialized_ = true;
     const SDL_AudioSpec spec{SDL_AUDIO_F32, 2, mixer_.sample_rate()};
@@ -38,11 +41,13 @@ AudioOutput::AudioOutput(AudioMixer& mixer, bool enabled) : mixer_(mixer) {
     }
     const auto* driver=SDL_GetCurrentAudioDriver();
     const auto* device=SDL_GetAudioDeviceName(SDL_GetAudioStreamDevice(stream_));
-    std::cout << "[audio] driver=" << (driver ? driver : "unknown") << " device=" << (device ? device : "default") << '\n';
+    std::cout << "[audio] driver=" << (driver ? driver : "unknown") << " device=" << (device ? device : "default")
+              << " rate=" << mixer_.sample_rate() << "Hz channels=2 format=float32\n\n"<<std::flush;
 }
 AudioOutput::~AudioOutput() {
     if (stream_) SDL_DestroyAudioStream(stream_);
     if (initialized_) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    if (initialized_) std::cout<<"[audio] output=closed callbacks=stopped\n\n"<<std::flush;
 }
 void AudioOutput::callback(void* userdata, SDL_AudioStream* stream, int additional, int total) {
     (void)total;
@@ -59,6 +64,11 @@ void AudioOutput::callback(void* userdata, SDL_AudioStream* stream, int addition
             additional -= bytes;
         }
     } catch (...) { self.failed_ = true; }
+}
+void AudioOutput::pause(bool paused) {
+    if (stream_ && !(paused ? SDL_PauseAudioStreamDevice(stream_) : SDL_ResumeAudioStreamDevice(stream_)))
+        throw std::runtime_error(output_error("Audio pause"));
+    if (stream_) std::cout<<"[audio] output="<<(paused ? "paused" : "resumed")<<"\n\n"<<std::flush;
 }
 void AudioOutput::movie_begin() {
     movie_active_.store(false, std::memory_order_release);

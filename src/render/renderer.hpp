@@ -48,6 +48,7 @@ public:
     void preload(const Content&,const std::vector<Layer>&,AssetTier);
     void invalidate_scene();
     void clear_cache();
+    [[nodiscard]] Image save_thumbnail() const;
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:
     void cleanup();

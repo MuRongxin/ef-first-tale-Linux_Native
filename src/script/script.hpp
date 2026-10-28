@@ -89,6 +89,8 @@ public:
     [[nodiscard]] std::int64_t variable(const std::string& name) const;
     // Host clocks may update an existing local without recursively notifying assignments.
     void update_local_variable(const std::string& name, std::int64_t value);
+    // Chapter bootstrap before the first instruction; rejects an already used VM.
+    void initialize_globals(const std::map<std::string,std::int64_t>&);
     // Read-only diagnostics for offline route coverage, not a persistent save format.
     [[nodiscard]] nlohmann::json inspect() const;
 private:

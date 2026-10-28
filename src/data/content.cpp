@@ -203,7 +203,7 @@ void Content::validate_images() const {
             const auto image = decode_image(resolve(variant.path));
             if (image.width != variant.width || image.height != variant.height)
                 throw std::runtime_error(id + ": decoded dimensions differ from manifest for tier " + std::to_string(tier));
-            std::cout << "validated " << id << " tier=" << tier << " pixels=" << image.width << 'x' << image.height << '\n';
+            std::cout << "validated " << id << " tier=" << tier << " pixels=" << image.width << 'x' << image.height << "\n\n" << std::flush;
         }
     }
 }

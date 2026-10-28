@@ -16,6 +16,7 @@ public:
     [[nodiscard]] bool failed() const { return failed_.load(); }
     // Movie audio is streamed from the control thread and mixed by the same callback.
     // The ring holds at most two seconds of 48 kHz stereo float samples.
+    void pause(bool paused);
     void movie_begin();
     void movie_end();
     [[nodiscard]] std::size_t movie_push(const float* interleaved, std::size_t frames);

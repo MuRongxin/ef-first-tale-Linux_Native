@@ -44,6 +44,15 @@ else()
         URL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz
         URL_HASH SHA256=e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564)
     FetchContent_MakeAvailable(webp)
+    # HD lossless images must remain interactive in developer builds too.
+    # Keep vendor debug symbols, but optimize decoder/resampler hot loops.
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        foreach(codec_target webpdecode webpdsp webputils)
+            if(TARGET ${codec_target})
+                target_compile_options(${codec_target} PRIVATE $<$<CONFIG:Debug>:-O2>)
+            endif()
+        endforeach()
+    endif()
     set(EF_WEBP_TARGET webp)
 endif()
 
