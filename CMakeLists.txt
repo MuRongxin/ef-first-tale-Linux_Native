@@ -17,6 +17,7 @@ configure_file(src/script/script_ops.hpp.in generated/script_ops.hpp @ONLY)
 
 add_library(ef_core
     src/save/json_file.cpp
+    src/save/menu_layout.cpp
     src/save/slots.cpp
     src/save/checkpoint.cpp
     src/settings/font_settings.cpp
@@ -216,6 +217,11 @@ if(BUILD_TESTING)
     target_link_libraries(ef_dialogue_tests PRIVATE ef_core)
     ef_compile_options(ef_dialogue_tests)
     add_test(NAME dialogue COMMAND ef_dialogue_tests)
+    add_executable(ef_save_menu_layout_tests tests/save_menu_layout_tests.cpp)
+    target_link_libraries(ef_save_menu_layout_tests PRIVATE ef_core)
+    target_compile_definitions(ef_save_menu_layout_tests PRIVATE EF_SAVE_UI_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/examples/save.ui.json")
+    ef_compile_options(ef_save_menu_layout_tests)
+    add_test(NAME save_menu_layout COMMAND ef_save_menu_layout_tests)
     add_executable(ef_save_tests tests/save_tests.cpp)
     target_link_libraries(ef_save_tests PRIVATE ef_core)
     target_compile_definitions(ef_save_tests PRIVATE EF_AUDIO_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/audio-tone.ogg" EF_UI_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/examples/message.ui.json")

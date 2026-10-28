@@ -1,0 +1,138 @@
+{
+  "format": "ef.save_ui",
+  "version": 1,
+  "design_size": [
+    800,
+    600
+  ],
+  "images": {
+    "base": "sys/saveloadBase.png",
+    "quick_base": "sys/saveloadBase0.png",
+    "selection": "sys/saveloadSelect.png",
+    "empty_thumbnail": "sys/notsaved.png"
+  },
+  "slots": [
+    [
+      31,
+      27,
+      375,
+      126
+    ],
+    [
+      31,
+      133,
+      375,
+      231
+    ],
+    [
+      31,
+      239,
+      375,
+      337
+    ],
+    [
+      31,
+      345,
+      375,
+      443
+    ],
+    [
+      31,
+      451,
+      375,
+      549
+    ],
+    [
+      425,
+      27,
+      769,
+      126
+    ],
+    [
+      425,
+      133,
+      769,
+      231
+    ],
+    [
+      425,
+      239,
+      769,
+      337
+    ],
+    [
+      425,
+      345,
+      769,
+      443
+    ],
+    [
+      425,
+      451,
+      769,
+      549
+    ]
+  ],
+  "thumbnail": {
+    "offset": [
+      12,
+      12
+    ],
+    "size": [
+      100,
+      75
+    ]
+  },
+  "controls": {
+    "previous": [
+      431,
+      562,
+      544,
+      590
+    ],
+    "next": [
+      562,
+      562,
+      694,
+      590
+    ],
+    "return": [
+      700,
+      562,
+      770,
+      590
+    ]
+  },
+  "native_pages": {
+    "first": 0,
+    "last": 9,
+    "first_manual": 1
+  },
+  "manual_pages": 10,
+  "navigation": {
+    "right": [
+      5,
+      6,
+      7,
+      8,
+      9,
+      1,
+      2,
+      3,
+      4,
+      0
+    ],
+    "left": [
+      9,
+      5,
+      6,
+      7,
+      8,
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  }
+}

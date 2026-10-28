@@ -1,6 +1,6 @@
 # 实现进度快照（PROGRESS）
 
-> 快照时间：**2026-10-27**（Asia/Shanghai）
+> 快照时间：**2026-10-28**（Asia/Shanghai）
 > 数据来源：`git log` / 工作区检查 / `docs/NATIVE-RUNTIME.md`、`docs/SCRIPT-RUNTIME.md`、`docs/UPSCALE-REMOTE-PIPELINE.md` / 最近实现记录（`*-2026102x.md`）。
 > 本文件是**进度快照**；能力边界以 `NATIVE-RUNTIME.md` / `SCRIPT-RUNTIME.md` 和最近实现记录为准，格式规格以 `PAZ_FORMAT.md` / `02-SCRIPT-REFERENCE.md` / `SAVE_FORMAT.md` 为准。
 
@@ -8,7 +8,7 @@
 
 - `d6f925d` 已接入版本化原生存档与快速存读档；本次在此基础上完成普通槽位 100 个、快速槽位 9 个轮换、列表与启动读档。电影纹理跟随窗口物理分辨率（`3d45c7f`）。详见 [原生存档](NATIVE-SAVES-20261027.md) 与 [槽位指南](SAVE-SLOTS-20261027.md)。
 - 文档可入库；`AGENTS.md` 保留本地，原始数据、content、存档和验证运行产物不入库。
-- 最新测试结果见槽位指南；本次沿用 dev 33 项、core ASan 23 项的测试集合并扩充存档用例。
+- 槽位提交 `bd2a581` 已推送；新增菜单布局 JSON 与 C++ 分页/命中模型，窗口菜单仍未接入，见 [布局取证](SAVE-MENU-LAYOUT-20261028.md)。测试集合新增 `save_menu_layout`，dev 34/34、core ASan 24/24 PASS。
 
 ## 2. 里程碑状态
 
