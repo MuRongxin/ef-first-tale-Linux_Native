@@ -7,6 +7,7 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <cstring>
 
 namespace ef {
 namespace {
@@ -16,6 +17,60 @@ std::size_t pixel_bytes(int width, int height) {
         static_cast<std::uint64_t>(height) * 4 > max_bytes)
         throw std::runtime_error("Image dimensions exceed the 512 MiB decode budget");
     return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
+}
+struct PngInput { const std::vector<std::uint8_t>& data; std::size_t offset{}; };
+void png_memory_read(png_structp png,png_bytep output,png_size_t count) {
+    auto& input=*static_cast<PngInput*>(png_get_io_ptr(png));
+    if (count>input.data.size()-input.offset) png_error(png,"Truncated PNG");
+    std::memcpy(output,input.data.data()+input.offset,count);input.offset+=count;
+}
+// Keep one source row and the bounded destination: panoramas can exceed the
+// full-image decode budget while their displayed result fits comfortably.
+Image stream_png_scaled(const std::vector<std::uint8_t>& encoded,int sw,int sh,int w,int h) {
+    Image result{w,h,std::vector<std::uint8_t>(pixel_bytes(w,h))};
+    std::vector<std::uint8_t> row(pixel_bytes(sw,1));
+    std::vector<std::uint64_t> sums(static_cast<std::size_t>(w)*4);
+    PngInput input{encoded};
+    auto* png=png_create_read_struct(PNG_LIBPNG_VER_STRING,nullptr,nullptr,nullptr);
+    if (!png) throw std::runtime_error("PNG reader allocation failed");
+    auto* info=png_create_info_struct(png);
+    if (!info) {png_destroy_read_struct(&png,nullptr,nullptr);throw std::runtime_error("PNG metadata allocation failed");}
+    if (setjmp(png_jmpbuf(png))) {png_destroy_read_struct(&png,&info,nullptr);throw std::runtime_error("PNG streaming decode failed");}
+    png_set_read_fn(png,&input,png_memory_read);png_read_info(png,info);
+    const auto color=png_get_color_type(png,info);const auto depth=png_get_bit_depth(png,info);
+    if (depth==16) png_set_strip_16(png);
+    if (color==PNG_COLOR_TYPE_PALETTE) png_set_palette_to_rgb(png);
+    if (color==PNG_COLOR_TYPE_GRAY && depth<8) png_set_expand_gray_1_2_4_to_8(png);
+    const bool transparent=png_get_valid(png,info,PNG_INFO_tRNS)!=0;
+    if (transparent) png_set_tRNS_to_alpha(png);
+    if (color==PNG_COLOR_TYPE_GRAY || color==PNG_COLOR_TYPE_GRAY_ALPHA) png_set_gray_to_rgb(png);
+    if (!(color&PNG_COLOR_MASK_ALPHA) && !transparent) png_set_add_alpha(png,255,PNG_FILLER_AFTER);
+    png_read_update_info(png,info);
+    if (png_get_rowbytes(png,info)!=row.size()) png_error(png,"Unexpected PNG row format");
+    for (int y=0;y<h;++y) {
+        std::fill(sums.begin(),sums.end(),0);
+        const int y0=static_cast<int>(static_cast<std::int64_t>(y)*sh/h);
+        const int y1=static_cast<int>(static_cast<std::int64_t>(y+1)*sh/h);
+        for (int sy=y0;sy<y1;++sy) {
+            png_read_row(png,row.data(),nullptr);
+            for (int x=0;x<w;++x) {
+                const int x0=static_cast<int>(static_cast<std::int64_t>(x)*sw/w);
+                const int x1=static_cast<int>(static_cast<std::int64_t>(x+1)*sw/w);
+                auto* sum=sums.data()+static_cast<std::size_t>(x)*4;
+                for (int sx=x0;sx<x1;++sx) {
+                    const auto* pixel=row.data()+static_cast<std::size_t>(sx)*4;
+                    sum[0]+=pixel[0];sum[1]+=pixel[1];sum[2]+=pixel[2];sum[3]+=pixel[3];
+                }
+            }
+        }
+        for (int x=0;x<w;++x) {
+            const auto count=static_cast<std::uint64_t>(y1-y0)*
+                (static_cast<std::int64_t>(x+1)*sw/w-static_cast<std::int64_t>(x)*sw/w);
+            for (int c=0;c<4;++c) result.rgba[(static_cast<std::size_t>(y)*w+x)*4+c]=
+                static_cast<std::uint8_t>(sums[static_cast<std::size_t>(x)*4+c]/count);
+        }
+    }
+    png_read_end(png,info);png_destroy_read_struct(&png,&info,nullptr);return result;
 }
 }
 Image decode_image_scaled(const std::filesystem::path& path, int max_width, int max_height, int expected_width, int expected_height) {
@@ -51,6 +106,9 @@ Image decode_image_scaled(const std::filesystem::path& path, int max_width, int 
             result.width = static_cast<int>(png.value.width);
             result.height = static_cast<int>(png.value.height);
             check_size(result.width,result.height);
+            const auto [bounded_w,bounded_h]=dimensions(result.width,result.height);
+            if ((bounded_w!=result.width || bounded_h!=result.height) && encoded.size()>28 && encoded[28]==0)
+                return stream_png_scaled(encoded,result.width,result.height,bounded_w,bounded_h);
             result.rgba.resize(pixel_bytes(result.width, result.height));
             png.value.format = PNG_FORMAT_RGBA;
             if (!png_image_finish_read(&png.value, nullptr, result.rgba.data(), 0, nullptr))

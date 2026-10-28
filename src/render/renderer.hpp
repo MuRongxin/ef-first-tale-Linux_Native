@@ -64,7 +64,7 @@ private:
         Target(const Target&) = delete;
         Target& operator=(const Target&) = delete;
     };
-    struct Entry { Texture texture; std::size_t bytes{}; std::uint64_t used{}; };
+    struct Entry { Texture texture; std::size_t bytes{}; std::uint64_t used{}; int width{},height{}; };
     Entry& texture(const Content& content,const std::string& asset,AssetTier tier,bool strip=false,GLuint pinned=0);
     std::map<std::string, Entry> cache_,strips_;
     std::set<std::string> rejected_,strip_rejected_,reported_;

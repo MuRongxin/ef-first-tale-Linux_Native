@@ -9,7 +9,7 @@
 目前支持全量资源导入与引用检查、高清图像预览、FreeType 矢量中文、剧本基础控制流和文字校阅。
 严格模式已接入基础场景、转场、滚动、语音/BGM/音效，以及启用 FFmpeg 构建时的视频播放；标题、章节选择、原生快速存读档与窗口槽位菜单已接入；完整演出、原版 UI 外观、旧档迁移及 KTX2 缓存仍在开发中。
 
-默认启动进入标题，可选新游戏、继续、读取存档、章节选择、CG 图鉴或退出。空存档目录也可直接进入序章、第一章、幕间和第二章；继续读取最近一次兼容的普通/快速存档。游戏内 Esc 确认返回标题，取消则继续当前会话；F11 切换全屏。标题目前使用功能布局，尚未复刻原版外观，详见 [标题流程与入口核对](docs/TITLE-FLOW-20261028.md)。
+默认启动进入原版夕阳城市首页，提供 New Game、Load Game、System、Memories、Exit 五个按钮与局部悬停高亮，并显示中文操作提示。Memories 内可选择全部章节、CG 图鉴或继续最近兼容存档，首页也可按 C 继续；无需旧档或通关。System 可调整窗口、字体与新游戏文字速度。游戏内 Esc 确认返回首页；F11 切换无边框全屏。首页底图 / 高亮已补齐 4× / 8×，设置与鉴赏子页仍为功能布局，详见 [首页移植与边界](docs/TITLE-HOMEPAGE-20261028.md) 和 [标题流程](docs/TITLE-FLOW-20261028.md)。
 
 CG 图鉴无需存档或通关：支持分组、分页、全部差分、高清缩放/平移和逐级返回。缩略图在后台从 4× CG 派生并缓存，高清图遵循普通窗口 4×、最大化/全屏 8×，只驻留一张高清纹理。Tab 切分组，方向键/Enter 浏览，PageUp/PageDown 翻页，Esc/右键返回；查看时滚轮缩放、WASD 平移。分类依据、缓存预算与验收见 [CG 图鉴](docs/CG-GALLERY-20261028.md)，`--audit-gallery` 可导出完整分组/差分对应关系。
 
@@ -61,7 +61,8 @@ python3 tools/build_image_inventory.py --project-root . --jobs 4
 H.264 视频放在 `assets/hd/video/`，保留原视频文件名主干，容器使用 MKV/MP4。
 
 ```bash
-python3 tools/prepare_content.py --all --game-root "$GAME" --jobs 4
+python3 tools/prepare_procedural_hd.py
+python3 tools/prepare_content.py --all --hd-only --game-root "$GAME" --jobs 4
 ```
 
 全量模式导入图片、UTF-8 JSON 剧本、原版 OGG/WAV 与已有的高清视频。
@@ -75,7 +76,10 @@ python3 tools/prepare_content.py --all --game-root "$GAME" --jobs 4
 只准备小型预览时，可省略 `--all`，用重复的 `--image tag/name.png` 指定图片，
 然后运行 `tools/import_scripts.py --game-root "$GAME"` 导入剧本。
 已有全量包须继续使用 `--all` 更新，避免预览命令覆盖资源索引。
-默认带原始图像回退；`--hd-only` 严格要求每张选中图片具备 4× 版本。
+开发预览默认允许原始图像回退；生产包使用 `--hd-only`，不登记 1× 档位，缩略图运行时从高清源图派生。
+已有完整包只更新高清图片时，运行 `python3 tools/refresh_content_images.py`，保留剧本、音视频和布局。
+当前包全部 3,758 张图片已覆盖：3,292 张具有两档高清文件，466 张运行时派生，1× 引用为 0。
+详见 [全量高清接入](docs/HD-CONTENT-20261028.md)。
 中文字体默认从本机 Noto Sans CJK SC 复制，也可通过 `--font` 和 `--font-face` 指定。
 
 ## 运行

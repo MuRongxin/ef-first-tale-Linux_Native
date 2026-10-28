@@ -311,7 +311,7 @@ int run(const Options& requested) {
     Uint64 checkpoint_notice_until{};
     SaveSlots menu_slots(options.save_dir.empty() ? default_save_directory() : options.save_dir);
     std::unique_ptr<SaveMenu> save_menu;
-    TitleMenu title_menu;
+    TitleMenu title_menu(content);
     std::unique_ptr<Gallery> gallery;
     int confirmation{}; // 1 return to title, 2 exit
     std::optional<bool> pending_menu;
@@ -364,7 +364,7 @@ int run(const Options& requested) {
         pending_menu.reset();pending_quick_save=false;captured_thumbnail=nullptr;
         scene=Scene{};scene.title="ef - the first tale.";
         renderer.clear_cache();renderer.invalidate_scene();last_tier.reset();
-        title_active=true;title_menu=TitleMenu{};checkpoint_clock_reset=true;
+        title_active=true;title_menu.reset();checkpoint_clock_reset=true;
         checkpoint_notice_until=0;
         std::cout<<"[title] opened; session released"<<"\n\n" << std::flush;
     };
@@ -421,12 +421,12 @@ int run(const Options& requested) {
             }
             if (event.type==SDL_EVENT_QUIT || event.type==SDL_EVENT_WINDOW_CLOSE_REQUESTED) {running=false;continue;}
             if (gallery && !(event.type==SDL_EVENT_KEY_DOWN && (event.key.key==SDLK_F10 || event.key.key==SDLK_F11))) {
-                if (gallery->event(event,menu_point)) {gallery.reset();std::cout<<"[gallery] returned to title\n"<<std::flush;}
+                if (gallery->event(event,menu_point)) {gallery.reset();title_menu.reset();std::cout<<"[gallery] returned to title\n"<<std::flush;}
                 continue;
             }
-            if (title_active && !gallery && !save_menu && !(event.type==SDL_EVENT_KEY_DOWN && (event.key.key==SDLK_F10 || event.key.key==SDLK_F11))) {
+            if (title_active && !gallery && !save_menu && !(event.type==SDL_EVENT_KEY_DOWN && (event.key.key==SDLK_F10 || event.key.key==SDLK_F11 || (event.key.key>=SDLK_F5 && event.key.key<=SDLK_F9))) && event.type!=SDL_EVENT_DROP_FILE) {
                 const int action=title_menu.event(event,menu_point);
-                if (action==1 || action>=10) start_chapter(action==1 ? 0 : action-10);
+                if (action==1 || (action>=10 && action<=13)) start_chapter(action==1 ? 0 : action-10);
                 if (action==2) {
                     try {
                         std::optional<SaveSlot> latest;std::int64_t sequence=-1;
@@ -449,6 +449,19 @@ int run(const Options& requested) {
                     catch (const std::exception& e) {checkpoint_notice="图鉴无法打开，请检查内容包。";checkpoint_notice_until=SDL_GetTicks()+4000;std::cerr<<"[gallery] "<<e.what()<<'\n';}
                 }
                 if (action==4) confirmation=2;
+                if (action==20) checked(SDL_SetWindowFullscreen(window.handle,!(SDL_GetWindowFlags(window.handle)&SDL_WINDOW_FULLSCREEN)),"Title fullscreen");
+                if (action>=21 && action<=24) {
+                    auto candidate=font_settings;
+                    if (action==21 || action==22) candidate.scale=static_cast<float>(std::clamp(std::lround(candidate.scale*100)+(action==22 ? 5 : -5),75L,150L))/100;
+                    if (action==23) candidate={};
+                    if (action==24) {
+                        const auto old=candidate.appearance.value_or(TextAppearance{});TextAppearance next;next.baseline_offset=old.baseline_offset;
+                        if (old.outline_width==0) {next.shadow_x=next.shadow_y=1;if (old.shadow_x!=0 || old.shadow_y!=0) next.outline_width=1;}
+                        candidate.appearance=next;
+                    }
+                    change_font(candidate);
+                }
+                if (action==25 || action==26) options.text_speed=std::clamp(options.text_speed+(action==26 ? 10 : -10),10,200);
                 continue;
             }
             if (frontend && script && !save_menu && event.type==SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.key==SDLK_ESCAPE) {
@@ -717,7 +730,7 @@ int run(const Options& requested) {
             pending_menu.reset();pending_quick_save=false;
         }
         if (frontend && script && script->runtime().state()==ScriptState::ended && !confirmation) return_to_title();
-        if (title_active && !gallery) title_menu.draw(renderer,*font,view.scale());
+        if (title_active && !gallery) title_menu.draw(renderer,*font,tier,view.scale(),static_cast<int>(std::lround(font_settings.scale*100)),options.text_speed,flags & SDL_WINDOW_FULLSCREEN);
         if (gallery) gallery->draw(renderer,*font,tier,view.scale());
         if (save_menu) save_menu->draw(renderer,*font,tier,view.scale());
         if (confirmation) {

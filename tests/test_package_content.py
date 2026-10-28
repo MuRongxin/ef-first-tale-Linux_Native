@@ -124,7 +124,7 @@ class PackageTests(unittest.TestCase):
                              manifest['images']['st/test.png']['variants']['1']['path'])
             self.assertEqual((self.out / voice_path).read_bytes(), voice_data)
             before = (self.out / 'manifest.json').read_bytes()
-            (self.project / 'assets/hd/bg_4x/test.webp').write_bytes(b'partial upload')
+            (self.project / 'assets/hd/bg_4x/test.png-.webp').write_bytes(b'partial upload')
             with self.assertRaises(OSError):
                 package(self.project, self.project / 'game', self.out, self.font, 0)
             self.assertEqual((self.out / 'manifest.json').read_bytes(), before)

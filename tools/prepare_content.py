@@ -50,9 +50,10 @@ def safe_path(root: Path, relative: str) -> Path:
 def hd_name(name: str) -> str:
     # Match ef_client.strip_known_ext, including the packer's fake extensions.
     lower = name.lower()
-    for suffix in (".png.tmp", ".png-", ".png"):
-        if lower.endswith(suffix):
-            return name[:-len(suffix)] + ".webp"
+    if lower.endswith((".png.tmp", ".png-")):
+        return name + ".webp"
+    if lower.endswith(".png"):
+        return name[:-4] + ".webp"
     if ".png" in lower:
         return name[:lower.index(".png")] + ".webp"
     return str(PurePosixPath(name).with_suffix(".webp"))
@@ -106,6 +107,40 @@ def copy_blob(source: Path, out: Path, suffix: str, *, dimensions=None, sha256=N
         return destination.relative_to(out).as_posix(), size
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def thumbnail_sources(rows: list[dict], overrides: dict) -> dict:
+    images = {r['rel_path']: r for r in rows if r['kind'] == 'png'}
+    by_name = {}
+    for row in images.values():
+        if row.get('method') != 'runtime_derive_from_hd':
+            by_name.setdefault(Path(row['rel_path']).name.lower(), []).append(row)
+    result = {}
+    for id, row in images.items():
+        if row.get('method') != 'runtime_derive_from_hd':
+            continue
+        if id in overrides:
+            spec = overrides[id]
+        else:
+            choices = by_name.get(Path(id).name.lower(), [])
+            if not choices or len({r['sha256'] for r in choices}) != 1:
+                raise ValueError(f'缩略图来源需明确核对：{id}')
+            choices.sort(key=lambda r: (r['rel_path'].startswith('r18_') != id.startswith('r18_'),
+                                        r['rel_path'].split('/')[0] not in ('bg', 'r18_bg'), r['rel_path']))
+            source = choices[0]
+            spec = {'asset': source['rel_path'], 'crop': [0, 0, int(source['w']), int(source['h'])]}
+        source = images.get(spec['asset'])
+        if not source or source.get('method') == 'runtime_derive_from_hd':
+            raise ValueError(f'派生源不是具体图像：{id}')
+        crop = spec['crop']
+        if (len(crop) != 4 or any(type(n) is not int for n in crop) or min(crop[:2]) < 0 or
+                min(crop[2:]) <= 0 or crop[0]+crop[2] > int(source['w']) or crop[1]+crop[3] > int(source['h'])):
+            raise ValueError(f'派生裁剪越界：{id}')
+        result[id] = {'asset': spec['asset'], 'crop': crop}
+    if set(overrides) - result.keys():
+        raise ValueError('缩略图覆盖表含非缩略图 ID')
+    return result
+
 
 
 def import_image(project: Path, out: Path, row: dict, hd_only=False, *, decode=True) -> dict:

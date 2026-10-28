@@ -178,9 +178,11 @@ def parse_multipart_parts(body: bytes, content_type: str) -> dict[int, bytes]:
 # 输入：ef 项目 → 任务列表（纯 I/O 适配）
 # ---------------------------------------------------------------------------
 def strip_known_ext(name: str) -> str:
-    """去掉打包器扩展名：.png / .png- / .png.tmp / .ani / .psd / .txt。"""
+    """去掉普通扩展名；保留 .png-/.png.tmp，避免与不同内容的 .png 冲突。"""
     low = name.lower()
-    for suf in (".png.tmp", ".png-", ".png", ".ani", ".psd", ".txt"):
+    if low.endswith((".png.tmp", ".png-")):
+        return name
+    for suf in (".png", ".ani", ".psd", ".txt"):
         if low.endswith(suf):
             return name[: -len(suf)]
     if ".png" in low:
@@ -318,13 +320,28 @@ def alias_outputs(task: Task, plans: list[dict], out_root: Path) -> list[tuple]:
         if not rel:
             continue
         for plan in plans:
-            result.append((plan["path"], out_path(out_root, rel, plan["tree"]),
+            result.append((plan["path"], out_path(out_root, rel, plan["tree"], plan["path"].suffix),
                            tuple(plan["dims"])))
     return result
 
 
 def plans_done(plans: list[dict]) -> bool:
     return all(file_matches(p["path"], p["dims"]) for p in plans)
+
+
+def existing_png_plans(task: Task, plans: list[dict]) -> list[dict]:
+    """续跑保留已分块制作的真 8× PNG，不重新写入 4× WebP 回退。"""
+    result = []
+    for plan in plans:
+        png = plan["path"].with_suffix(".png")
+        dimensions = [(task.w * 8, task.h * 8)] if plan["tree"] == 8 else []
+        dimensions.append(tuple(plan["dims"]))
+        for dims in dimensions:
+            if file_matches(png, dims):
+                plan = dict(plan, path=png, dims=dims)
+                break
+        result.append(plan)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +402,8 @@ def stages_for(task: Task, scale: int, want4: bool) -> str:
 def process_task(task: Task, cfg) -> dict:
     out_root = cfg.out_root
     plans = output_plans(task, out_root, cfg.scale, cfg.want4)
+    if not cfg.force:
+        plans = existing_png_plans(task, plans)
     if not plans:
         return {"ok": True, "skipped": True, "task": task,
                 "reason": "no output planned"}
@@ -408,6 +427,8 @@ def process_task(task: Task, cfg) -> dict:
 
     written = []
     for plan in plans:
+        if not cfg.force and file_matches(plan["path"], plan["dims"]):
+            continue
         part = result["parts"].get(plan["part"])
         if part is None:
             raise RuntimeError(f"missing {plan['part']}x part "
@@ -513,6 +534,8 @@ def main() -> int:
     pending, done, fallback8 = [], 0, []
     for task in tasks:
         plans = output_plans(task, out_root, args.scale, want4)
+        if not args.force:
+            plans = existing_png_plans(task, plans)
         if not plans:
             continue
         if args.scale == 8 and max(task.w, task.h) * 8 > WEBP_MAX_DIM:

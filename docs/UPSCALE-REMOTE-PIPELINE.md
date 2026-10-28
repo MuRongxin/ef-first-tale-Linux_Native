@@ -125,8 +125,8 @@ python3 tools/upscale/remote/ef_client.py --api ... --retry-failed "assets/hd/up
 - [x] 客户端 I/O 适配（本文件 + `ef_client.py`）
 - [x] 4x/8x、续跑、别名、8x 回退逻辑（协议/尺寸用本地 mock 服务端验证过；
       按用户要求不再做本地测试）
-- [ ] 提供 GPU 服务端地址 → 先 `--limit 10` 抽验 4x/8x 画质与 alpha，再全量
-- [ ] 决定 UI 是否也走超分（`--methods` 加 `upscale_ui_or_redraw`）；烧死文字建议引擎重绘
+- [x] GPU 服务部署与抽样：旧美术批次见 §9；2026-10-28 新节点补齐 UI 批次见 §10
+- [x] UI 补齐：2026-10-28 采用 `upscale_ui_or_redraw` 补做两档；烧死文字仍可后续矢量重绘
 
 ---
 
@@ -219,3 +219,120 @@ PyTorch 缓存/碎片占满 22.8 GB 后 16:19 起连锁失败，客户端 16:38 
 
 > 注：分块拼接在重叠区裁掉边缘，理论上与整图推理有极微小差异；这 7 张已包含在
 > 上面的尺寸校验与 SHA-256 清单中。远端服务已停止（GPU 0%），需要重跑时按 §9.2 重启即可。
+
+
+## 10. 新远端重建（2026-10-28）
+
+新节点：`root@cpod-1x0p9cg91q2n-s3.podtcp.compshare.cn`，SSH 端口 `22143`。
+密码不记录在文档、源码或命令行参数中。部署根目录 `/workspace/ef-upscale`。
+
+### 10.1 覆盖范围复核
+
+旧批次“全量完成”指 `upscale_art` 美术资源，不代表全部 PNG 已有两档高清。
+本次使用已有 `tools/audit_hd_coverage.py` 按本地 manifest 和实际文件头重新审计：
+
+- PNG 共 3,758 张；CG、立绘和标题的旧批次产物仍在。
+- `upscale_ui_or_redraw` 缺口 83 张，对应 82 个去重任务；本次补做两档。
+- `procedural_regen` 尚有 84 张，需程序化处理，不混入 AI 队列。
+- `runtime_derive_from_hd` 为 466 张缩略图，继续运行时派生，不预烘或 AI 超分。
+- 25 张背景的 8× 树仍为已记录的 4× 内容，不计作真正 8× 完成。
+
+本地证据：`work/hd-coverage/coverage.json`、`missing.csv`、`upscale-missing.json`。
+这是文件头及尺寸审计，不能替代完整解码、哈希和画质验收。
+
+### 10.2 环境及运维入口
+
+- Ubuntu 22.04；RTX 4090，驱动报告显存 49,140 MiB、驱动 610.57.04。
+- 复用镜像 Python 3.12.11 / PyTorch 2.13.0+cu132 / torchvision 0.28.0+cu132；
+  在 `/workspace/ef-upscale/venv` 创建继承系统包的隔离环境安装 API 依赖。
+- 使用原 `img2_upscale` 本地 bundle 中的 Real-ESRGAN 和 nunif 模型，不更换模型。
+- 启动入口：`bash /workspace/ef-upscale/start.sh`；半精度开启，waifu tile 512，WebP lossless method 4。
+- API 只监听远端 `127.0.0.1:6006`；随机令牌位于远端权限 0600 的 `api.env`，客户端通过环境变量读取。
+- 项目输入及输出：`/workspace/ef-upscale/ef-remote`；输入计划仅包含本次缺口。
+- 服务日志：`/workspace/ef-upscale/wa2-pytorch/server/server.log`。
+
+SSH 隧道（本地端口可自行改动）：
+
+```bash
+ssh -p 22143 -N -L 16006:127.0.0.1:6006 root@cpod-1x0p9cg91q2n-s3.podtcp.compshare.cn
+```
+
+任务使用原 `ef_client.py --methods upscale_art,upscale_ui_or_redraw --scale 8`，
+一次请求同时产出 4×/8×；先抽样，核对尺寸、alpha 和画面后再补齐队列。
+
+### 10.3 假扩展名冲突修复
+
+逐文件透明通道验收发现 `sys/iconson.png` 与 `sys/iconson.png-` 是同尺寸、不同内容，
+旧规则把二者都写为 `iconson.webp`，并发可覆盖、续跑也会误认为已完成。
+`pauseAnime.png` / `.png-` 也有同类命名冲突，但属于程序化队列，本轮未送 AI。
+修复后，普通 `.png` 仍输出 `<stem>.webp`；`.png-` / `.png.tmp` 保留完整源文件名，
+分别输出 `<name>.png-.webp` / `<name>.png.tmp.webp`，子目录保持不变。
+客户端、特大图客户端和 content 导入器使用同一规则；本地覆盖审计随导入器更新。
+本次清单仅有三张这类假扩展名 PNG，全部属于 UI，已有 CG / 背景 / 立绘产物路径不变。
+冲突图片已强制重新制作，不能仅按旧文件尺寸判定成功。
+同内容别名仍分别创建各自路径并共享文件内容。
+
+回归用合成的 `.png` / `.png-` / `.png.tmp` 三张同尺寸、不同颜色和 alpha 的图片，
+验证两类客户端路径一致且互不冲突，并验证 content 导入后仍保留各自像素和透明度。
+
+### 10.4 本次验收与回传
+
+- 4× 抽样 10 张、8× 抽样 5 张成功；随后补完其余 77 项，0 失败。
+- 命名冲突修复后补跑相关源与别名，最终 82 个去重任务对应 83 张图片、166 个文件。
+- 远端 166 文件全部完整解码，尺寸和透明通道存在性检查通过；产物合计 180,986,230 字节。
+- 归档回传后逐文件 SHA-256 全部一致；本地 `assets/hd` 新增 164 文件，保留已有两张有效 4× `topmenu2` / `topmenu2Over`。
+- 本轮只更新 `assets/hd`，未重新打包运行时 `content/`。
+- 导入相关 12 项 Python 测试通过；M0 独立验证 PASS（0 失败）。
+- 证据：`work/upscale-remote/cpod-validation.json`、`cpod-independent-verify.log`；均不入库。
+- 服务保持运行，可复用；环境包快照位于远端 `/workspace/ef-upscale/environment-freeze.txt`。
+
+远端续跑与查看日志：
+
+```bash
+bash /workspace/ef-upscale/client.sh --scale 8 --concurrency 4 --log-file resume.log
+tail -20 /workspace/ef-upscale/ef-remote/run.log
+```
+
+本次输入包已更新为修复后的客户端；复用历史输入包重建时须以当前仓库 `ef_client.py` 替换旧版本。
+
+最终本地覆盖审计：AI 缺口 0；UI 93 张中 83 张两档齐全，剩余 10 张属于程序化队列。
+程序化缺口仍为 84 张，运行时派生缩略图 466 张；25 张超宽背景仍沿用已记录的 4× 回退。
+
+
+## 11. 25 张超宽背景补齐真 8×（2026-10-28）
+
+本节替代 §9 / §10 中这 25 张背景“8× 树仍保存 4× 内容”的当前状态描述；旧批次记录保留作历史。
+
+- 25 个图片 ID，按源 SHA-256 去重为 19 个 GPU 任务；六个重复项使用硬链接。
+- 所有图均为原图实际 8×，高度 4,800，宽度 20,080–40,432；超出 WebP 单边上限，使用无损 PNG。
+- 保留已有 4×；替换 8× 树中的旧回退文件，旧文件本地备份至 `work/upscale-remote/true8-old-fallback/`。
+- 输出 25 文件，去重体积 1,022,242,005 字节；归档约 975 MiB（硬链接避免重复传输）。
+- 远端逐文件完整解码、尺寸检查通过；本地归档 SHA-256 与远端一致，25 个安装文件逐项 SHA-256 一致。
+- 归档 SHA-256：`c77517580b15dd02d956d4457b48bdfa2eed8a6f237cdb96c25ca9e29f3b18fd`。
+- 本次只更新 `assets/hd`，没有重新打包 `content/`；超宽纹理运行时分块仍是独立工作。
+
+### 推理及利用率
+
+沿用原 Real-ESRGAN x4 + nunif swin_unet x2，非把原 4× 文件直接插值拉伸。
+源图按不重叠的 1,024px 核心区域切块，各边额外携带 96px 上下文；每块两阶段推理后裁掉上下文再拼接。
+客户端对返回块的 8× 尺寸逐块断言，最终按源尺寸乘 8 校验。
+
+RTX 4090 / 驱动报告 48 GiB 显存，20 CPU / 90 GiB 内存：
+6 路图片任务供给一个串行 GPU 推理队列，FP16 / AMP 开启、waifu tile 768。
+起初中间 WebP 编码导致 GPU 等待；临时服务 `server-fast` @ 127.0.0.1:6007
+改用无损 PNG（compress_level=1）传输块，最终 PNG compress_level=2，未修改模型权重或普通服务的编码实现。
+
+优化后连续 10 秒采样：平均 GPU 利用率约 81.7%，7 次为 100%，峰值功耗约 410W、温度最高 60°C、显存约 12 GiB。
+优化这一轮约 212 秒（复用初始阶段已完成的 3 个任务）；从初始任务启动到全部完成约 5 分半，不能把 212 秒当作所有任务从零计算时间。
+
+完成并回传后普通与临时超分服务均已停止，GPU 0% / 1 MiB。
+**停止服务不等于停止实例计费，仍须在租用平台关机。**
+
+普通客户端现识别并保留已制作的真 8× PNG，续跑不会重新创建 4× WebP 回退与之冲突；
+缺少 4× 时仅修复缺少档位，保留已有真 8×。相关回归还检查 PNG 别名保持扩展名。
+
+本地证据：`work/upscale-remote/true8-validation.json`、`true8-plan.json`、
+`true8-run.py`、`true8-install.py`；新全量审计位于 `work/hd-true8-final/`。
+远端操作脚本和日志保留于 `/workspace/ef-upscale/true8*`，运行产物不入库。
+
+最终全量审计：3,208 张 AI 类图片均有完整 4× / 8×，8× 的历史 4× 回退为 0；剩余缺口仍为 84 张程序化资源与 466 张运行时派生缩略图。8 项导入/客户端回归、5 项打包回归通过，M0 独立验证 PASS（0 失败）。

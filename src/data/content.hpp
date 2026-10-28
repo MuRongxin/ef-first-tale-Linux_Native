@@ -1,5 +1,7 @@
 #pragma once
 #include "core/display.hpp"
+#include "data/image.hpp"
+#include <array>
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <map>
@@ -10,10 +12,14 @@ namespace ef {
 struct ImageVariant {
     int tier{}, width{}, height{};
     std::string path;
+    int derived_width{}, derived_height{};
+    std::array<int,4> crop{}; // source pixels; only set for runtime-derived thumbnails
 };
 struct Asset {
     int width{}, height{}; // design_size, never derived from the selected tier
     std::map<int, ImageVariant> variants;
+    std::string derived_source;
+    std::array<int,4> derived_crop{}; // source design coordinates
 };
 struct Resource {
     std::string id, kind, name, tag, path, source_sha256;
@@ -30,6 +36,7 @@ public:
     [[nodiscard]] std::filesystem::path resolve(const std::string& relative) const;
     [[nodiscard]] const Asset& asset(const std::string& id) const;
     [[nodiscard]] std::vector<ImageVariant> candidates(const std::string& id, AssetTier tier) const;
+    [[nodiscard]] Image decode_variant(const ImageVariant&,int max_width,int max_height) const;
     [[nodiscard]] nlohmann::json read_json(const std::string& relative) const;
     [[nodiscard]] const std::map<std::string, Asset>& assets() const { return assets_; }
     [[nodiscard]] const std::map<std::string, Resource>& resources() const { return resources_; }

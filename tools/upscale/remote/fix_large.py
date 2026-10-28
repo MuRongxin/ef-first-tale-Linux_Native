@@ -42,7 +42,9 @@ def log(msg: str) -> None:
 
 def strip_known_ext(sub: str) -> str:
     low = sub.lower()
-    for suf in (".png.tmp", ".png-", ".png", ".ani", ".psd", ".txt"):
+    if low.endswith((".png.tmp", ".png-")):
+        return sub
+    for suf in (".png", ".ani", ".psd", ".txt"):
         if low.endswith(suf):
             return sub[: -len(suf)]
     return sub

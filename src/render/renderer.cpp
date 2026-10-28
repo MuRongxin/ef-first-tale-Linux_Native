@@ -472,17 +472,24 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
     const auto budget=strip ? strip_budget_ : budget_;
     for (const auto& candidate : content.candidates(asset, tier)) {
         const auto path = content.resolve(candidate.path).string();
-        if (rejected.contains(path)) continue;
-        auto found = cache.find(path);
+        auto key=path;
+        if (candidate.derived_width) {
+            key+="|derived:"+std::to_string(candidate.derived_width)+"x"+std::to_string(candidate.derived_height);
+            for (const auto n:candidate.crop) key+=':'+std::to_string(n);
+        }
+        if (rejected.contains(key)) continue;
+        auto found = cache.find(key);
         if (found == cache.end()) {
             bool capacity_conflict=false;
             try {
-                const auto bytes = static_cast<std::size_t>(candidate.width) * static_cast<std::size_t>(candidate.height) * 4;
-                if (candidate.width > max_texture_size_ || candidate.height > max_texture_size_ || bytes > budget)
-                    throw std::runtime_error("Image exceeds GPU texture dimensions or cache budget");
-                const auto image = decode_image(path);
-                if (image.width != candidate.width || image.height != candidate.height)
-                    throw std::runtime_error("Decoded dimensions do not match the content manifest");
+                const int w=candidate.derived_width ? candidate.derived_width : candidate.width;
+                const int h=candidate.derived_height ? candidate.derived_height : candidate.height;
+                if (strip && (w>max_texture_size_ || h>max_texture_size_ || static_cast<std::uint64_t>(w)*h*4>budget))
+                    throw std::runtime_error("Filter strip exceeds its texture dimensions or cache budget");
+                const double fit=std::min({1.0,static_cast<double>(max_texture_size_)/w,static_cast<double>(max_texture_size_)/h,
+                    std::sqrt(static_cast<double>(budget)/(static_cast<double>(w)*h*4))});
+                const auto image=content.decode_variant(candidate,std::max(1,static_cast<int>(w*fit)),std::max(1,static_cast<int>(h*fit)));
+                const auto bytes=image.rgba.size();
                 while (cache_bytes + bytes > budget && !cache.empty()) {
                     auto victim=cache.end();
                     for (auto it=cache.begin();it!=cache.end();++it)
@@ -491,10 +498,10 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
                     cache_bytes -= victim->second.bytes;
                     cache.erase(victim);
                 }
-                found = cache.emplace(path, Entry{Texture(image), bytes, ++clock_}).first;
+                found = cache.emplace(key, Entry{Texture(image), bytes, ++clock_,image.width,image.height}).first;
                 cache_bytes += bytes;
             } catch (const std::exception& e) {
-                if (!capacity_conflict) rejected.insert(path);
+                if (!capacity_conflict) rejected.insert(key);
                 std::cerr << "[asset fallback] " << path << ": " << e.what() << "\n\n" << std::flush;
                 continue;
             }
@@ -503,6 +510,7 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
         if (reported_.insert(report).second) {
             std::cout << "asset " << asset << " requested=" << static_cast<int>(tier)
                       << " selected=" << candidate.tier << " pixels=" << candidate.width << 'x' << candidate.height
+                      << " uploaded=" << found->second.width << 'x' << found->second.height
                       << " requested_scale=" << static_cast<int>(tier) << "x actual_scale=" << candidate.tier << "x"
                       << " design=" << content.asset(asset).width << 'x' << content.asset(asset).height
                       << " texture_MiB=" << static_cast<double>(found->second.bytes)/(1024*1024)

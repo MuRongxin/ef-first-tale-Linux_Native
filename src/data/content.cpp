@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <set>
+#include <cmath>
 
 namespace ef {
 std::string resource_name(const std::string& name) {
@@ -50,7 +51,7 @@ Content::Content(const std::filesystem::path& root) : root_(std::filesystem::can
         const auto& size = spec.at("design_size");
         if (!size.is_array() || size.size() != 2 || !size[0].is_number_integer() || !size[1].is_number_integer())
             throw std::runtime_error(id + ": invalid design_size");
-        Asset asset{size[0].get<int>(), size[1].get<int>(), {}};
+        Asset asset;asset.width=size[0].get<int>();asset.height=size[1].get<int>();
         if (asset.width <= 0 || asset.height <= 0 || asset.width > 65536 || asset.height > 65536)
             throw std::runtime_error(id + ": design_size out of range");
         if (!spec.at("variants").is_object()) throw std::runtime_error(id + ": variants must be an object");
@@ -70,8 +71,26 @@ Content::Content(const std::filesystem::path& root) : root_(std::filesystem::can
             (void)resolve(item.path);
             asset.variants.emplace(value, std::move(item));
         }
-        if (asset.variants.empty()) throw std::runtime_error(id + ": no image variants");
+        if (spec.contains("derived_from")) {
+            const auto& derived=spec.at("derived_from");
+            asset.derived_source=derived.at("asset").get<std::string>();
+            const auto& crop=derived.at("crop");
+            if (!crop.is_array() || crop.size()!=4 || !std::all_of(crop.begin(),crop.end(),[](const auto& n) {return n.is_number_integer();}))
+                throw std::runtime_error(id+": invalid derived crop");
+            asset.derived_crop=crop.get<std::array<int,4>>();
+            if (!asset.variants.empty() || asset.derived_source.empty()) throw std::runtime_error(id+": derived images cannot carry baked variants");
+        }
+        if (asset.variants.empty() && asset.derived_source.empty()) throw std::runtime_error(id + ": no image variants");
         assets_.emplace(id, std::move(asset));
+    }
+    for (const auto& [id,asset]:assets_) if (!asset.derived_source.empty()) {
+        const auto source=assets_.find(asset.derived_source);
+        if (source==assets_.end() || !source->second.derived_source.empty() || !source->second.variants.contains(4))
+            throw std::runtime_error(id+": derived source must be a concrete image with a 4x tier");
+        const auto& c=asset.derived_crop;
+        if (c[0]<0 || c[1]<0 || c[2]<=0 || c[3]<=0 ||
+            static_cast<std::int64_t>(c[0])+c[2]>source->second.width || static_cast<std::int64_t>(c[1])+c[3]>source->second.height)
+            throw std::runtime_error(id+": derived crop outside source canvas");
     }
     script_index_ = doc.value("script_index", "scripts/index.json");
     (void)resolve(script_index_);
@@ -189,6 +208,16 @@ const Asset& Content::asset(const std::string& id) const {
 }
 std::vector<ImageVariant> Content::candidates(const std::string& id, AssetTier tier) const {
     const auto& source = asset(id);
+    if (!source.derived_source.empty()) {
+        auto result=candidates(source.derived_source,AssetTier::x4);
+        const auto& parent=asset(source.derived_source);
+        for (auto& variant:result) {
+            variant.derived_width=source.width*4;variant.derived_height=source.height*4;
+            for (int i=0;i<4;++i) variant.crop[static_cast<std::size_t>(i)]=static_cast<int>(
+                static_cast<std::int64_t>(source.derived_crop[static_cast<std::size_t>(i)])*(i%2 ? variant.height : variant.width)/(i%2 ? parent.height : parent.width));
+        }
+        return result;
+    }
     std::vector<ImageVariant> result;
     for (const int level : {8, 4, 1}) {
         if (level > static_cast<int>(tier)) continue;
@@ -197,13 +226,39 @@ std::vector<ImageVariant> Content::candidates(const std::string& id, AssetTier t
     }
     return result;
 }
+Image Content::decode_variant(const ImageVariant& variant,int max_width,int max_height) const {
+    if (max_width<=0 || max_height<=0) throw std::runtime_error("Invalid decode bounds");
+    if (!variant.derived_width) return decode_image_scaled(resolve(variant.path),max_width,max_height,variant.width,variant.height);
+    const double scale=std::min({1.0,static_cast<double>(max_width)/variant.derived_width,static_cast<double>(max_height)/variant.derived_height});
+    const int w=std::max(1,static_cast<int>(variant.derived_width*scale)),h=std::max(1,static_cast<int>(variant.derived_height*scale));
+    if (static_cast<std::uint64_t>(w)*h*4>512ULL*1024*1024) throw std::runtime_error("Derived image exceeds decode budget");
+    const auto& c=variant.crop;
+    auto source=decode_image_scaled(resolve(variant.path),
+        static_cast<int>(std::min(static_cast<double>(variant.width),std::ceil(static_cast<double>(w)*variant.width/c[2]))),
+        static_cast<int>(std::min(static_cast<double>(variant.height),std::ceil(static_cast<double>(h)*variant.height/c[3]))),variant.width,variant.height);
+    const int x0=static_cast<int>(static_cast<std::int64_t>(c[0])*source.width/variant.width);
+    const int y0=static_cast<int>(static_cast<std::int64_t>(c[1])*source.height/variant.height);
+    const int x1=std::max(x0+1,static_cast<int>((static_cast<std::int64_t>(c[0])+c[2])*source.width/variant.width));
+    const int y1=std::max(y0+1,static_cast<int>((static_cast<std::int64_t>(c[1])+c[3])*source.height/variant.height));
+    Image result{w,h,std::vector<std::uint8_t>(static_cast<std::size_t>(w)*h*4)};
+    for (int y=0;y<h;++y) for (int x=0;x<w;++x) {
+        const int sx=x0+static_cast<int>(static_cast<std::int64_t>(x)*(x1-x0)/w);
+        const int sy=y0+static_cast<int>(static_cast<std::int64_t>(y)*(y1-y0)/h);
+        std::copy_n(source.rgba.data()+(static_cast<std::size_t>(sy)*source.width+sx)*4,4,
+                    result.rgba.data()+(static_cast<std::size_t>(y)*w+x)*4);
+    }
+    return result;
+}
 void Content::validate_images() const {
     for (const auto& [id, source] : assets_) {
         for (const auto& [tier, variant] : source.variants) {
-            const auto image = decode_image(resolve(variant.path));
-            if (image.width != variant.width || image.height != variant.height)
-                throw std::runtime_error(id + ": decoded dimensions differ from manifest for tier " + std::to_string(tier));
+            const auto image = decode_variant(variant,4096,4096);
             std::cout << "validated " << id << " tier=" << tier << " pixels=" << image.width << 'x' << image.height << "\n\n" << std::flush;
+        }
+        if (!source.derived_source.empty()) {
+            const auto derived=candidates(id,AssetTier::x4);
+            if (derived.empty()) throw std::runtime_error(id+": missing derived source");
+            (void)decode_variant(derived.front(),256,192);
         }
     }
 }

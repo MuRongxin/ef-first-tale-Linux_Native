@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--movie-return',action='store_true',help='Exercise cancellation and return during an unskippable movie (FFmpeg build)')
     parser.add_argument('--wm',default=shutil.which('openbox'),help='Optional window manager for maximize/fullscreen acceptance')
     parser.add_argument('--gallery-only',action='store_true',help='Exercise the title/gallery/viewer loop and async cache')
+    parser.add_argument('--title-only',action='store_true',help='Check original title atlas cropping, hotzones and settings')
     a=parser.parse_args();out=a.out;out.mkdir(parents=True,exist_ok=True)
     if a.movie_return and a.real_content:parser.error('--movie-return uses synthetic content only')
     entries=['000_01mugai','100_01','700_01mugai','200_01']
@@ -32,6 +33,11 @@ def main():
         for name,size in [('saveloadBase',(800,600)),('saveloadBase0',(800,600)),('saveloadSelect',(344,98)),('notsaved',(100,75))]:
             Image.new('RGBA',size,(20,35,70,255)).save(out/(name+'.png'))
             manifest['images']['sys/'+name+'.png']={'design_size':list(size),'variants':{'1':{'path':name+'.png','pixels':list(size)}}}
+        # Title atlas fixtures use distinct base/hover pixels to detect accidental full-image overlays.
+        for name,color in [('topmenu2',(72,100,130,255)),('topmenu2Over',(230,180,70,255))]:
+            Image.new('RGBA',(800,600),color).save(out/(name+'.png'))
+            manifest['images']['sys/'+name+'.png']={'design_size':[800,600],'variants':{'1':{'path':name+'.png','pixels':[800,600]}}}
+        shutil.copyfile(ROOT/'examples/title.ui.json',out/'title.ui.json')
         if a.gallery_only:
             for n in range(1,15):
                 for suffix in ['a01','b01']:
@@ -46,7 +52,7 @@ def main():
                 manifest['images']['bg/'+name+'.png']={'design_size':[800,600],'variants':{'1':{'path':'missing.png','pixels':[800,600]}}}
         (out/'manifest.json').write_text(json.dumps(manifest))
         shutil.copyfile(ROOT/'examples/save.ui.json',out/'save.ui.json')
-        index=json.loads((out/'scripts/index.json').read_text());index['save_ui']='save.ui.json'
+        index=json.loads((out/'scripts/index.json').read_text());index['save_ui']='save.ui.json';index['title_ui']='title.ui.json'
         shutil.copyfile(ROOT/'tests/fixtures/audio-tone.ogg',out/'tone.ogg')
         catalog=json.loads((out/'catalog.json').read_text())
         catalog['entries']['bgm/tone.ogg']={'kind':'bgm','name':'tone.ogg','tag':'bgm','path':'tone.ogg',
@@ -109,6 +115,9 @@ def main():
         for down in [1,0]:xt.XTestFakeButtonEvent(d,1,down,0);x.XFlush(d);time.sleep(.04)
     cmd=[str(a.binary),'--content',str(a.real_content or out),'--save-dir',str(saves),'--text-speed','0',
          '--font-config',str(out/'font.json'),'--window-config',str(out/'window.json'),'--width','800','--height','600']
+    if a.title_only:
+        (out/'font.json').unlink(missing_ok=True)
+        cmd+=['--frames','600','--screenshot',str(out/'title-frame.ppm')]
     if not a.audio:cmd.append('--silent')
     p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,env=dict(os.environ,XDG_CACHE_HOME=str(out/'cache'),SDL_VIDEO_DRIVER='x11',SDL_AUDIO_DRIVER='dummy',LIBGL_ALWAYS_SOFTWARE='1'))
     sel=selectors.DefaultSelector();sel.register(p.stdout,selectors.EVENT_READ);log=b'';cursor=0;latencies=[]
@@ -123,11 +132,45 @@ def main():
         latencies.append({'event':token.decode(),'seconds':round(time.monotonic()-began,4)})
     try:
         wait('[title] opened');assert not saves.exists()
+        if a.title_only:
+            key('Home')
+            # Native rectangles use half-open bounds; x=679 must not activate New Game.
+            click(679,55)
+            # Press/release over different buttons must not dispatch either action.
+            def move(dx,dy):
+                px,py,child=C.c_int(),C.c_int(),C.c_ulong()
+                x.XTranslateCoordinates(d,active[0],x.XDefaultRootWindow(d),0,0,C.byref(px),C.byref(py),C.byref(child))
+                xt.XTestFakeMotionEvent(d,-1,px.value+dx,py.value+dy,0);x.XFlush(d);time.sleep(.08)
+            move(740,55);xt.XTestFakeButtonEvent(d,1,1,0);x.XFlush(d);time.sleep(.08)
+            move(740,85);xt.XTestFakeButtonEvent(d,1,0,0);x.XFlush(d);time.sleep(.08)
+            # The System button changes real persisted font settings without starting a script.
+            click(740,117);key('Home');key('Down');key('Return');wait('font applied=')
+            settings=json.loads((out/'font.json').read_text());assert abs(settings['scale']-.95)<1e-6,settings
+            key('Down');key('Return');wait('font applied=')
+            settings=json.loads((out/'font.json').read_text());assert settings['scale']==1,settings
+            key('Down');key('Return');wait('font applied=')
+            key('Escape');key('F8');wait('font applied=');key('F9');wait('font applied=')
+            if a.wm:
+                key('F11');wait('window tier=8');key('F11');wait('window tier=4')
+            key('Home')
+            assert p.wait(timeout=30)==0
+            log+=p.stdout.read()
+            assert b'[title] chapter ' not in log and b'[save-menu] opened' not in log,log
+            assert not saves.exists()
+            frame=Image.open(out/'title-frame.ppm').convert('RGB');assert frame.size==(800,600)
+            if not a.real_content:
+                assert frame.getpixel((400,300))==(72,100,130)
+                assert frame.getpixel((700,55))==(230,180,70)
+                assert frame.getpixel((700,85))==(72,100,130)
+                assert frame.getpixel((679,55))==(72,100,130)
+            frame.save(out/'title-frame.png')
+            print('Title artwork PASS: native hotzones, isolated atlas highlight, no cross-button activation, settings and fullscreen return')
+            return
         if a.gallery_only:
             def open_gallery():
                 key('Home')
-                for _ in range(4):key('Down')
-                key('Return');wait('[gallery] opened')
+                for _ in range(3):key('Down')
+                key('Return');key('Down');key('Return');wait('[gallery] opened')
             open_gallery()
             if a.real_content:
                 import re
@@ -197,8 +240,8 @@ def main():
             return
         if a.real_content:
             time.sleep(.15);ImageGrab.grab(xdisplay=os.environ['DISPLAY']).save(out/'title.png')
-        key('Home');key('Down');key('Return');wait('[title] no compatible save');assert not saves.exists()
-        key('Down');key('Return');wait('[save-menu] opened title load')
+        key('c');wait('[title] no compatible save');assert not saves.exists()
+        key('Home');key('Down');key('Return');wait('[save-menu] opened title load')
         key('Tab');key('Right');key('Return');key('Escape')
         assert not saves.exists(),'Title load input created a save'
         if a.movie_return:
@@ -214,7 +257,7 @@ def main():
         for n,name in enumerate(entries):
             key('Home')
             for _ in range(3):key('Down')
-            key('Return');key('Home')
+            key('Return');key('Home');key('Return');key('Home')
             for _ in range(n):key('Down')
             key('Return');wait(f'[title] chapter {n} started');wait(f'message ready scr/{name}.sc L0=100')
             key('F2');wait('[save] saved slot q')
@@ -233,15 +276,15 @@ def main():
             key('Escape');wait('[title] confirm return');key('Escape');wait('[title] confirmation cancelled')
             key('Escape');wait('[title] confirm return');click(300,330);wait('[title] opened; session released')
         # Continue chooses the latest compatible save, then returns cleanly again.
-        key('Home');key('Down');key('Return');wait('[save] loaded menu slot');wait('message ready scr/200_01.sc L0=100')
+        key('c');wait('[save] loaded menu slot');wait('message ready scr/200_01.sc L0=100')
         key('Escape');wait('[title] confirm return');key('Return');wait('[title] opened; session released')
         # Populated title load menu restores q1, with no session attached beforehand.
-        key('Home');key('Down');key('Down');key('Return');wait('[save-menu] opened title load')
+        key('Home');key('Down');key('Return');wait('[save-menu] opened title load')
         key('Tab');key('Page_Up');key('Down');key('Down');key('Return')
         wait('[save] loaded menu slot');wait('message ready scr/000_01mugai.sc L0=100')
         key('Escape');wait('[title] confirm return');key('Return');wait('[title] opened; session released')
         # New game starts at the prologue, without a saved route or unlocked flags.
-        key('Home');click(350,250);wait('[title] chapter 0 started');wait('message ready scr/000_01mugai.sc L0=100')
+        key('Home');click(740,55);wait('[title] chapter 0 started');wait('message ready scr/000_01mugai.sc L0=100')
         key('Escape');wait('[title] confirm return');key('Return');wait('[title] opened; session released')
         key('Escape');key('Escape')  # cancel exit
         key('Escape');key('Return');assert p.wait(timeout=10)==0
@@ -254,7 +297,7 @@ def main():
 
 if __name__=='__main__':
     import sys
-    if '--gallery-only' in sys.argv:
+    if '--gallery-only' in sys.argv or '--title-only' in sys.argv:
         from render_smoke import window_manager
         probe=argparse.ArgumentParser(add_help=False);probe.add_argument('--out',type=Path,default=ROOT/'build/title-flow-smoke')
         probe.add_argument('--wm',default=shutil.which('openbox'))

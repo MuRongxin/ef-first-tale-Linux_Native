@@ -1,0 +1,47 @@
+{
+  "r18_sys/thumb/th_216_05.png": {
+    "asset": "r18_bg/evh02_008a01.png",
+    "crop": [
+      0,
+      230,
+      800,
+      160
+    ]
+  },
+  "r18_sys/thumb/th_215_02.png": {
+    "asset": "bg/evh02_002a01.png",
+    "crop": [
+      4,
+      68,
+      794,
+      159
+    ]
+  },
+  "r18_sys/thumb/th_113_02.png": {
+    "asset": "r18_bg/evh01_015a01.png",
+    "crop": [
+      264,
+      146,
+      530,
+      106
+    ]
+  },
+  "r18_sys/thumb/th_111_05.png": {
+    "asset": "bg/ev01_150.png",
+    "crop": [
+      211,
+      238,
+      458,
+      92
+    ]
+  },
+  "r18_sys/thumb/ev02_090a01.png": {
+    "asset": "bg/ev02_090.png",
+    "crop": [
+      0,
+      0,
+      800,
+      600
+    ]
+  }
+}

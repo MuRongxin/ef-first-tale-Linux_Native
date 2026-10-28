@@ -39,6 +39,14 @@ def import_message_ui(project: Path, out: Path, index: dict) -> None:
         write_json(safe_path(out, path), document)
         index["save_ui"] = path
 
+    source = project / "examples/title.ui.json"
+    if source.is_file():
+        document = json.loads(source.read_text(encoding="utf-8"))
+        encoded = (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        path = f"blobs/{hashlib.sha256(encoded).hexdigest()}.title.ui.json"
+        write_json(safe_path(out, path), document)
+        index["title_ui"] = path
+
 
 def refresh_message_ui(project: Path, out: Path) -> dict:
     """只原子更新布局和脚本索引，不重新复制图像/音频/视频。"""
@@ -134,12 +142,12 @@ def main():
     parser.add_argument("--game-root", type=Path, help="只读的原版游戏目录")
     parser.add_argument("--out", type=Path, default=Path("content"))
     parser.add_argument("--encoding", choices=("gbk", "cp932"), default="gbk")
-    parser.add_argument("--refresh-ui", action="store_true", help="仅更新已有包的消息窗/存读档布局，不读取原游戏或重打包资源")
+    parser.add_argument("--refresh-ui", action="store_true", help="仅更新已有包的消息窗/存读档/首页布局，不读取原游戏或重打包资源")
     args = parser.parse_args()
     try:
         if args.refresh_ui:
             refresh_message_ui(args.project_root, args.project_root / args.out)
-            print("消息窗/存读档布局已原子更新", flush=True)
+            print("消息窗/存读档/首页布局已原子更新", flush=True)
         elif args.game_root:
             import_scripts(args.project_root, args.game_root, args.project_root / args.out, args.encoding)
         else:

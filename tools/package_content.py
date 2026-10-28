@@ -14,7 +14,7 @@ from fractions import Fraction
 from content_resources import ResourceIndex, audit
 from import_scripts import import_scripts
 from prepare_content import (DEFAULT_IMAGE, copy_blob, import_image, safe_path,
-                             sha256_file, validate_output, write_json)
+                             sha256_file, validate_output, write_json, thumbnail_sources)
 
 
 def store_bytes(out, data, suffix, folder="blobs"):
@@ -153,6 +153,8 @@ def package(project, game, out, font, face, hd_only=False, *, decode_images=Fals
         images = [row for row in rows if row["kind"] == "png"]
         if not images:
             raise ValueError("图像清单为空")
+        sources_path=project/'examples/thumbnail.sources.json'
+        derived=thumbnail_sources(images,json.loads(sources_path.read_text()) if sources_path.is_file() else {}) if hd_only else {}
         entries = {row["rel_path"]: {"kind": "image", "name": row["rel_path"].split("/", 1)[1],
                                     "tag": row["rel_path"].split("/", 1)[0], "source_sha256": row["sha256"]} for row in images}
         if len(entries) != len(images):
@@ -173,10 +175,15 @@ def package(project, game, out, font, face, hd_only=False, *, decode_images=Fals
         fallback = []
         pool = ThreadPoolExecutor(max_workers=jobs)
         try:
-            imported = pool.map(lambda row: import_image(project, out, row, hd_only, decode=decode_images), images)
+            def load_image(row):
+                if row['rel_path'] in derived:
+                    return {'design_size': [int(row['w']),int(row['h'])], 'source_sha256': row['sha256'],
+                            'variants': {}, 'derived_from': derived[row['rel_path']]}
+                return import_image(project,out,row,hd_only,decode=decode_images)
+            imported = pool.map(load_image, images)
             for n, (row, spec) in enumerate(zip(images, imported), 1):
                 manifest["images"][row["rel_path"]] = spec
-                if "4" not in spec["variants"]:
+                if "4" not in spec["variants"] and row['rel_path'] not in derived:
                     fallback.append({"id": row["rel_path"], "category": row.get("category", "unknown")})
                 if n % 50 == 0 or n == len(images):
                     print(f"图像导入/{'完整解码' if decode_images else '哈希与尺寸校验'}：{n}/{len(images)}", flush=True)
@@ -200,6 +207,7 @@ def package(project, game, out, font, face, hd_only=False, *, decode_images=Fals
         report.update({"counts": dict(Counter(e["kind"] for e in entries.values())),
                        "image_validation": "sha256+dimensions+decode" if decode_images else "sha256+dimensions",
                        "raw_only_images": fallback, "raw_only_categories": dict(Counter(x['category'] for x in fallback)),
+                       "runtime_derived_images": derived,
                        "unconverted_animations": sum(row["kind"] == "ani" for row in rows),
                        "name_conflicts": conflicts, "warnings": warnings,
                        "audio_archives": archives})

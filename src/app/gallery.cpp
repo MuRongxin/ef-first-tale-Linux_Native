@@ -68,7 +68,7 @@ void Gallery::work() {
                             try {result.image=decode_image_scaled(cached,256,192);break;} catch (...) {std::error_code ignored;std::filesystem::remove(cached,ignored);}
                         }
                     }
-                    result.image=decode_image_scaled(source,job.full ? limit_ : 256,job.full ? limit_ : 192,candidate.width,candidate.height);
+                    result.image=content_.decode_variant(candidate,job.full ? limit_ : 256,job.full ? limit_ : 192);
                     if (!cached.empty()) {try {cache_write(cached,result.image);} catch (...) { /* disk cache is optional */ }}
                     break;
                 } catch (const std::exception& e) {last=e.what();}
