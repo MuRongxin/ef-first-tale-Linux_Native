@@ -88,7 +88,10 @@ void Gallery::schedule(AssetTier tier) {
     std::lock_guard lock(mutex_);++generation_;jobs_.clear();results_.clear();
     if (viewing_) {
         full_.reset();full_key_.clear();
-        jobs_.push_back({state,group.variants[variant_],true,tier,generation_});
+        const auto candidates=content_.candidates(group.variants[variant_],tier);
+        full_tiled_=!candidates.empty() && (candidates.front().width>8192 || candidates.front().height>8192 ||
+            static_cast<std::uint64_t>(candidates.front().width)*candidates.front().height*4>128ULL*1024*1024);
+        if (!full_tiled_) jobs_.push_back({state,group.variants[variant_],true,tier,generation_});
         std::cout<<"[gallery] view "<<group.variants[variant_]<<" tier="<<static_cast<int>(tier)<<"\n"<<std::flush;
     } else {
         full_.reset();full_key_.clear();
@@ -178,12 +181,16 @@ void Gallery::draw(Renderer& r,Font& font,AssetTier tier,float scale) {
     rect(0,0,800,600,{.025f,.04f,.07f,1});
     if (viewing_ && !visible_.empty()) {
         const auto& g=catalog_.groups[visible_[selected_]];
-        if (full_) {
-            const float fit=std::min(800.f/static_cast<float>(full_width_),480.f/static_cast<float>(full_height_));
-            const float w=static_cast<float>(full_width_)*fit*zoom_,h=static_cast<float>(full_height_)*fit*zoom_;
+        if (full_ || full_tiled_) {
+            const auto& design=content_.asset(g.variants[variant_]);
+            const float fit=std::min(800.f/static_cast<float>(design.width),480.f/static_cast<float>(design.height));
+            const float w=static_cast<float>(design.width)*fit*zoom_,h=static_cast<float>(design.height)*fit*zoom_;
             pan_x_=std::clamp(pan_x_,-std::max(0.f,(w-800)/2),std::max(0.f,(w-800)/2));
             pan_y_=std::clamp(pan_y_,-std::max(0.f,(h-480)/2),std::max(0.f,(h-480)/2));
-            r.quad(*full_,(800-w)/2+pan_x_,60+(480-h)/2+pan_y_,w,h,{1,1,1,1});
+            if (full_tiled_) {
+                Layer l;l.kind=LayerKind::image;l.asset=g.variants[variant_];l.x=(800-w)/2+pan_x_;l.y=60+(480-h)/2+pan_y_;l.width=w;l.height=h;
+                r.image(content_,l,tier);
+            } else r.quad(*full_,(800-w)/2+pan_x_,60+(480-h)/2+pan_y_,w,h,{1,1,1,1});
         } else text(error_.empty() ? "正在加载高清图…" : error_,230,270,500);
         rect(0,0,800,60,{.025f,.04f,.07f,1});rect(0,530,800,70,{.025f,.04f,.07f,1});
         text(g.id+"   差分 "+std::to_string(variant_+1)+" / "+std::to_string(g.variants.size()),24,10,760,22);

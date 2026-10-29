@@ -23,6 +23,7 @@ private:
     std::vector<std::string> sections_{"全部"};
     std::size_t section_{},selected_{},variant_{};
     bool viewing_{};
+    bool full_tiled_{};
     int pressed_{-1},limit_{};
     float zoom_{1},pan_x_{},pan_y_{};
     std::uint64_t generation_{},clock_{};

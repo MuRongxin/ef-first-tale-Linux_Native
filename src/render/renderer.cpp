@@ -148,6 +148,7 @@ void main() {
 in vec2 uv;
 uniform sampler2D image;
 uniform float bottom_limit;
+uniform vec4 source_map;
 uniform vec4 color;
 uniform ivec4 hsv_matrix;
 uniform int hsv_enabled;
@@ -167,6 +168,7 @@ void main() {
     vec2 sample_uv=uv;
     if (bottom_limit>0.0) sample_uv.y=min(sample_uv.y,bottom_limit-0.5/float(textureSize(image,0).y));
     vec4 source = texture(image,sample_uv);
+    vec2 material_uv=source_map.xy+sample_uv*source_map.zw;
     if (transition_enabled==2) {
         ivec2 pixels=textureSize(image,0);
         vec2 point=floor(vec2(uv.x,1.0-uv.y)*vec2(pixels));
@@ -207,7 +209,7 @@ void main() {
         source.rgb=vec3(clamp((a*hsv_matrix.w+ivec3(luma_term))>>16,ivec3(0),ivec3(255)))/255.0;
     }
     if (overlay_enabled != 0) {
-        float row=(sample_uv.y*overlay_map.y+overlay_map.z)*overlay_map.w;
+        float row=(material_uv.y*overlay_map.y+overlay_map.z)*overlay_map.w;
         vec3 a=floor(clamp(source.rgb,0.0,1.0)*255.0+0.5);
         vec3 b=floor(clamp(texture(overlay_image,vec2(overlay_map.x,row)).rgb,0.0,1.0)*255.0+0.5);
         vec3 low=min(vec3(255),2.0*floor((a*b+255.0)/256.0));
@@ -216,7 +218,7 @@ void main() {
     }
     if (screen_enabled != 0) {
         // Strip and source share their bottom edge; CLAMP_TO_EDGE repeats the first row above it.
-        float row = (sample_uv.y * screen_map.y + screen_map.z) * screen_map.w;
+        float row = (material_uv.y * screen_map.y + screen_map.z) * screen_map.w;
         vec3 strip = texture(screen_image, vec2(screen_map.x, row)).rgb;
         vec3 a = floor(clamp(source.rgb, 0.0, 1.0) * 255.0 + 0.5);
         vec3 b = floor(clamp(strip, 0.0, 1.0) * 255.0 + 0.5);
@@ -243,6 +245,7 @@ void main() {
         flip_uniform_ = glGetUniformLocation(program_, "flip_y");
         uv_uniform_ = glGetUniformLocation(program_, "uv_rect");
         bottom_uniform_=glGetUniformLocation(program_,"bottom_limit");
+        source_map_uniform_=glGetUniformLocation(program_,"source_map");
         screen_uniform_=glGetUniformLocation(program_,"screen_enabled");
         screen_map_uniform_=glGetUniformLocation(program_,"screen_map");
         hsv_uniform_=glGetUniformLocation(program_,"hsv_matrix");
@@ -286,6 +289,7 @@ void Renderer::cleanup() {
 }
 Renderer::~Renderer() { cleanup(); }
 void Renderer::begin(int width, int height, Viewport view, Color background) {
+    ++tile_frame_;frame_upload_bytes_=0;tile_stream_.begin_frame();poll_tiles();
     glDisable(GL_SCISSOR_TEST);
     glViewport(0, 0, width, height);
     glClearColor(0, 0, 0, 1);
@@ -299,12 +303,13 @@ void Renderer::begin(int width, int height, Viewport view, Color background) {
 void Renderer::quad(const Texture& texture, float x, float y, float w, float h, Color color) {
     quad_id(texture.id(), x, y, w, h, color, false);
 }
-void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map, std::array<int,3> hsv, GLuint old, GLuint mask, float phase,int transition_type,std::array<int,4> region,float bottom_limit) {
+void Renderer::quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv, GLuint screen, std::array<float,4> screen_map, GLuint overlay, std::array<float,4> overlay_map, std::array<int,3> hsv, GLuint old, GLuint mask, float phase,int transition_type,std::array<int,4> region,float bottom_limit,std::array<float,4> source_map) {
     glUseProgram(program_);
     glBindVertexArray(vao_);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
     glUniform1f(bottom_uniform_,bottom_limit);
+    glUniform4fv(source_map_uniform_,1,source_map.data());
     glUniform1i(screen_uniform_,screen ? 1 : 0);
     if (screen) {
         glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D,screen);
@@ -341,6 +346,7 @@ void Renderer::invalidate_scene() {
 }
 void Renderer::clear_cache() {
     invalidate_scene();cache_.clear();strips_.clear();cache_bytes_=strip_bytes_=0;
+    tile_stream_.clear();tiles_.clear();tile_demands_.clear();tile_bytes_=0;
     rejected_.clear();strip_rejected_.clear();reported_.clear();
 }
 void Renderer::preload(const Content& content,const std::vector<Layer>& layers,AssetTier tier) {
@@ -349,8 +355,10 @@ void Renderer::preload(const Content& content,const std::vector<Layer>& layers,A
         if (l.kind!=LayerKind::image) continue;
         const auto& a=content.asset(l.asset);
         if (l.trim_bottom<0 || l.trim_bottom>=a.height || (l.trim_bottom && l.source)) throw std::runtime_error("Invalid candidate image trim");
-        if (l.source) {const auto& r=*l.source;if (r[0]<0 || r[1]<0 || r[2]<=0 || r[3]<=0 || r[0]+r[2]>static_cast<float>(a.width) || r[1]+r[3]>static_cast<float>(a.height)) throw std::runtime_error("Invalid candidate image atlas");}
-        (void)texture(content,l.asset,tier);
+        if (l.source) {const auto& r=*l.source;if (!std::all_of(r.begin(),r.end(),[](float n) {return std::isfinite(n);}) || r[0]<0 || r[1]<0 || r[2]<=0 || r[3]<=0 || r[0]+r[2]>static_cast<float>(a.width) || r[1]+r[3]>static_cast<float>(a.height)) throw std::runtime_error("Invalid candidate image atlas");}
+        std::array<float,4> uv{0,0,1,static_cast<float>(a.height-l.trim_bottom)/static_cast<float>(a.height)};
+        if (l.source) {const auto& s=*l.source;uv={s[0]/static_cast<float>(a.width),s[1]/static_cast<float>(a.height),s[2]/static_cast<float>(a.width),s[3]/static_cast<float>(a.height)};}
+        (void)tiled_image(content,l,tier,uv,0,{},0,{},false);
         if (!l.screen.empty()) (void)texture(content,l.screen,tier,true);
         if (!l.overlay.empty()) (void)texture(content,l.overlay,tier,true);
     }
@@ -411,7 +419,9 @@ void Renderer::stage(const Content& content, const std::vector<Layer>& previous,
     if (rebuild) {
         render(previous_target_,previous);
         snapshot_revision_ = revision; snapshot_tier_ = tier; snapshot_view_ = state.viewport;
-        snapshot_valid_ = true;
+        // A frozen previous FBO must keep requesting its missing detail. Otherwise
+        // the worker considers the view stale before its first result arrives.
+        snapshot_valid_ = tile_stats().visible_missing==0;
     }
     if (effect!=2 || rebuild || !transition_history_valid_) render(current_target_,current);
     const int step=static_cast<int>(std::floor(std::max(0.0f,progress)*static_cast<float>(transition_completion(effect))+.0001f));
@@ -488,7 +498,8 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
                     throw std::runtime_error("Filter strip exceeds its texture dimensions or cache budget");
                 const double fit=std::min({1.0,static_cast<double>(max_texture_size_)/w,static_cast<double>(max_texture_size_)/h,
                     std::sqrt(static_cast<double>(budget)/(static_cast<double>(w)*h*4))});
-                const auto image=content.decode_variant(candidate,std::max(1,static_cast<int>(w*fit)),std::max(1,static_cast<int>(h*fit)));
+                const bool panorama=!strip && tiled(candidate);
+                const auto image=content.decode_variant(candidate,panorama ? std::min(2048,max_texture_size_) : std::max(1,static_cast<int>(w*fit)),panorama ? std::min(2048,max_texture_size_) : std::max(1,static_cast<int>(h*fit)));
                 const auto bytes=image.rgba.size();
                 while (cache_bytes + bytes > budget && !cache.empty()) {
                     auto victim=cache.end();
@@ -511,6 +522,7 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
             std::cout << "asset " << asset << " requested=" << static_cast<int>(tier)
                       << " selected=" << candidate.tier << " pixels=" << candidate.width << 'x' << candidate.height
                       << " uploaded=" << found->second.width << 'x' << found->second.height
+                      << " upload_mode=" << (!strip && tiled(candidate) ? "preview_with_tiles" : "whole")
                       << " requested_scale=" << static_cast<int>(tier) << "x actual_scale=" << candidate.tier << "x"
                       << " design=" << content.asset(asset).width << 'x' << content.asset(asset).height
                       << " texture_MiB=" << static_cast<double>(found->second.bytes)/(1024*1024)
@@ -523,11 +535,106 @@ Renderer::Entry& Renderer::texture(const Content& content,const std::string& ass
     }
     throw std::runtime_error("No usable image variant for " + asset);
 }
+bool Renderer::tiled(const ImageVariant& v) const {
+    return !v.derived_width && (v.width>std::min(8192,max_texture_size_) || v.height>std::min(8192,max_texture_size_) ||
+        static_cast<std::uint64_t>(v.width)*v.height*4>128ULL*1024*1024);
+}
+Renderer::TileStats Renderer::tile_stats() const {
+    std::size_t missing{};
+    for (const auto& [key,demand]:tile_demands_) if (demand.frame==tile_frame_)
+        for (const auto i:demand.visible) if (!tiles_.contains({key,i})) ++missing;
+    return {tile_bytes_,tiles_.size(),missing,tile_uploads_,tile_stream_.stats()};
+}
+void Renderer::poll_tiles() {
+    for (auto& [key,demand]:tile_demands_) {
+        if (demand.frame+1<tile_frame_) continue;
+        for (const auto index:demand.visible) {
+            if (tiles_.contains({key,index}) || frame_upload_bytes_>=16ULL*1024*1024) continue;
+            auto image=tile_stream_.take(key,index);if (!image) continue;
+            const auto bytes=image->rgba.size();
+            while (tile_bytes_+bytes>tile_budget_ && !tiles_.empty()) {
+                const auto old=std::min_element(tiles_.begin(),tiles_.end(),[](const auto& a,const auto& b) {return a.second.used<b.second.used;});
+                tile_bytes_-=old->second.bytes;tiles_.erase(old);
+            }
+            tiles_.emplace(std::pair{key,index},Entry{Texture(*image),bytes,++clock_,image->width,image->height});
+            tile_bytes_+=bytes;frame_upload_bytes_+=bytes;++tile_uploads_;
+            // Old FBO snapshots must acquire newly available detail too.
+            snapshot_valid_=false;
+        }
+    }
+    for (auto it=tiles_.begin();it!=tiles_.end();) {
+        const auto demand=tile_demands_.find(it->first.first);
+        bool keep=false;
+        if (demand!=tile_demands_.end() && demand->second.frame+1>=tile_frame_)
+            for (const auto visible:demand->second.visible)
+                if (std::abs(visible.x-it->first.second.x)<=1 && std::abs(visible.y-it->first.second.y)<=1) {keep=true;break;}
+        if (!keep) {tile_bytes_-=it->second.bytes;it=tiles_.erase(it);} else ++it;
+    }
+}
+bool Renderer::tiled_image(const Content& content,const Layer& layer,AssetTier tier,std::array<float,4> uv,
+                          GLuint screen,std::array<float,4> screen_map,GLuint overlay,std::array<float,4> overlay_map,bool paint) {
+    // Resolve through the same validated fallback chain as ordinary textures.
+    auto& preview=texture(content,layer.asset,tier);
+    const auto candidates=content.candidates(layer.asset,tier);
+    const auto selected=std::find_if(candidates.begin(),candidates.end(),[&](const auto& v) {return !rejected_.contains(content.resolve(v.path).string());});
+    if (selected==candidates.end() || !tiled(*selected) || max_texture_size_<TileStream::edge+2) return false;
+    if (layer.width<=0 || layer.height<=0 || !std::isfinite(layer.x) || !std::isfinite(layer.y) ||
+        !std::isfinite(layer.width) || !std::isfinite(layer.height)) throw std::runtime_error("Invalid tiled image geometry");
+    const int width=selected->width,height=selected->height;
+    const float w=static_cast<float>(width),h=static_cast<float>(height);
+    const float sx=uv[0]*w,sy=uv[1]*h,sw=uv[2]*w,sh=uv[3]*h;
+    const float left=std::max(0.f,layer.x),right=std::min(800.f,layer.x+layer.width);
+    const float top=std::max(0.f,layer.y),bottom=std::min(600.f,layer.y+layer.height);
+    if (left>=right || top>=bottom) return true;
+    const auto first_x=std::clamp(static_cast<int>(std::floor((sx+(left-layer.x)*sw/layer.width)/TileStream::edge)),0,(width-1)/TileStream::edge);
+    const auto last_x=std::clamp(static_cast<int>(std::ceil((sx+(right-layer.x)*sw/layer.width)/TileStream::edge))-1,0,(width-1)/TileStream::edge);
+    const auto first_y=std::clamp(static_cast<int>(std::floor((sy+(top-layer.y)*sh/layer.height)/TileStream::edge)),0,(height-1)/TileStream::edge);
+    const auto last_y=std::clamp(static_cast<int>(std::ceil((sy+(bottom-layer.y)*sh/layer.height)/TileStream::edge))-1,0,(height-1)/TileStream::edge);
+    // An overview of the entire panorama uses the small texture; detailed views
+    // stay bounded even for arbitrary gallery zoom/atlas rectangles.
+    if ((last_x-first_x+1)*(last_y-first_y+1)>44) return false;
+    std::vector<TileIndex> visible,missing;
+    const auto key=content.resolve(selected->path).string()+":"+std::to_string(width)+":"+std::to_string(height);
+    for (int y=first_y;y<=last_y;++y) for (int x=first_x;x<=last_x;++x) {
+        visible.push_back({x,y});
+        if (!tiles_.contains({key,{x,y}})) missing.push_back({x,y});
+    }
+    // At most twelve CPU-prefetched neighbours (~48 MiB); visible tiles are first.
+    const auto urgent=missing.size();int neighbours=0;
+    for (int y=std::max(0,first_y-1);y<=std::min((height-1)/TileStream::edge,last_y+1);++y)
+        for (int x=std::max(0,first_x-1);x<=std::min((width-1)/TileStream::edge,last_x+1);++x)
+            if ((x<first_x || x>last_x || y<first_y || y>last_y) && neighbours<12 && !tiles_.contains({key,{x,y}})) {missing.push_back({x,y});++neighbours;}
+    tile_stream_.request(content.resolve(selected->path),width,height,missing,urgent);
+    auto& demand=tile_demands_[key];
+    if (demand.frame!=tile_frame_) demand.visible.clear();
+    demand.width=width;demand.height=height;demand.frame=tile_frame_;
+    for (const auto i:visible) if (std::find(demand.visible.begin(),demand.visible.end(),i)==demand.visible.end()) demand.visible.push_back(i);
+    poll_tiles();
+    const auto report="tiles:"+layer.asset+":"+std::to_string(selected->tier);
+    if (reported_.insert(report).second) std::cout<<"[tiles] "<<layer.asset<<" source="<<width<<'x'<<height<<" tile=1024 apron=1 gpu_budget_MiB=192\n"<<std::flush;
+    if (!paint) return true;
+    for (const auto i:visible) {
+        const float x0=std::max(sx,static_cast<float>(i.x*TileStream::edge)),y0=std::max(sy,static_cast<float>(i.y*TileStream::edge));
+        const float x1=std::min(sx+sw,static_cast<float>(std::min(width,(i.x+1)*TileStream::edge)));
+        const float y1=std::min(sy+sh,static_cast<float>(std::min(height,(i.y+1)*TileStream::edge)));
+        GLuint texture_id=preview.texture.id();std::array<float,4> coords{x0/w,y0/h,(x1-x0)/w,(y1-y0)/h},mapping{0,0,1,1};
+        float limit=layer.trim_bottom ? uv[3] : 0;
+        if (auto found=tiles_.find({key,i});found!=tiles_.end()) {
+            found->second.used=++clock_;texture_id=found->second.texture.id();
+            const auto r=TileStream::region(width,height,i);const float rw=static_cast<float>(r.width),rh=static_cast<float>(r.height);
+            coords={(x0-static_cast<float>(r.x))/rw,(y0-static_cast<float>(r.y))/rh,(x1-x0)/rw,(y1-y0)/rh};
+            mapping={static_cast<float>(r.x)/w,static_cast<float>(r.y)/h,rw/w,rh/h};
+            limit=layer.trim_bottom ? (uv[3]*h-static_cast<float>(r.y))/rh : 0;
+        }
+        quad_id(texture_id,layer.x+(x0-sx)*layer.width/sw,layer.y+(y0-sy)*layer.height/sh,
+                (x1-x0)*layer.width/sw,(y1-y0)*layer.height/sh,layer.color,false,coords,screen,screen_map,overlay,overlay_map,layer.hsv,0,0,0,0,{},limit,mapping);
+    }
+    return true;
+}
 void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
     const auto& design=content.asset(layer.asset);
     if (layer.trim_bottom<0 || layer.trim_bottom>=design.height || (layer.trim_bottom && layer.source))
         throw std::runtime_error("Invalid bottom trim or conflicting image atlas region");
-    auto& primary=texture(content,layer.asset,tier);
     const int material_height=design.height-layer.trim_bottom;
     GLuint screen{}; std::array<float,4> screen_map{};
     if (!layer.screen.empty()) {
@@ -555,6 +662,8 @@ void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
             throw std::runtime_error("Image atlas region outside design canvas");
         uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
     }
+    if (tiled_image(content,layer,tier,uv,screen,screen_map,overlay,overlay_map)) return;
+    auto& primary=texture(content,layer.asset,tier);
     quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map,layer.hsv,0,0,0,0,{},layer.trim_bottom ? static_cast<float>(material_height)/static_cast<float>(design.height) : 0);
 }
 void Renderer::movie(const std::uint8_t* rgba,int width,int height,int x,int y,int w,int h) {

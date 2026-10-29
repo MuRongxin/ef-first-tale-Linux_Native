@@ -9,6 +9,7 @@ option(EF_BUILD_APP "Build the SDL3/OpenGL preview application" ON)
 option(EF_FETCH_DEPENDENCIES "Fetch pinned dependencies when not installed" ON)
 option(EF_SANITIZERS "Enable address and undefined-behavior sanitizers" OFF)
 include(CTest)
+find_package(Threads REQUIRED)
 include(cmake/Dependencies.cmake)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/schemas/script-ops.json" EF_SCRIPT_OPS)
@@ -27,6 +28,7 @@ add_library(ef_core
     src/core/utf8.cpp
     src/data/content.cpp
     src/data/image.cpp
+    src/data/tile_stream.cpp
     src/data/gallery.cpp
     src/scene/scene.cpp
     src/scene/message_ui.cpp
@@ -41,7 +43,7 @@ add_library(ef_core
     src/script/dialogue.cpp
     src/scene/presentation.cpp)
 target_include_directories(ef_core PUBLIC src PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
-target_link_libraries(ef_core PUBLIC nlohmann_json::nlohmann_json PNG::PNG ${EF_WEBP_TARGET})
+target_link_libraries(ef_core PUBLIC Threads::Threads nlohmann_json::nlohmann_json PNG::PNG ${EF_WEBP_TARGET})
 
 function(ef_compile_options target)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -167,6 +169,9 @@ if(BUILD_TESTING)
         add_executable(ef_screen_render_tests tests/screen_render_tests.cpp src/render/renderer.cpp)
         target_link_libraries(ef_screen_render_tests PRIVATE ef_core SDL3::SDL3 OpenGL::GL GLEW::GLEW)
         ef_compile_options(ef_screen_render_tests)
+        add_executable(ef_tiled_render_tests tests/tiled_render_tests.cpp src/render/renderer.cpp)
+        target_link_libraries(ef_tiled_render_tests PRIVATE ef_core SDL3::SDL3 OpenGL::GL GLEW::GLEW)
+        ef_compile_options(ef_tiled_render_tests)
         add_executable(ef_composite_tests tests/composite_tests.cpp src/render/renderer.cpp)
         target_link_libraries(ef_composite_tests PRIVATE ef_core SDL3::SDL3 OpenGL::GL GLEW::GLEW)
         ef_compile_options(ef_composite_tests)
@@ -189,6 +194,7 @@ if(BUILD_TESTING)
             set_tests_properties(shake_render PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME screen_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_screen_render_tests>)
             set_tests_properties(screen_render PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
+            add_test(NAME tiled_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_tiled_render_tests>)
             add_test(NAME composite COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_composite_tests>)
             set_tests_properties(composite PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME movie_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_movie_render_tests>)
@@ -208,6 +214,10 @@ if(BUILD_TESTING)
     target_link_libraries(ef_core_tests PRIVATE ef_core)
     ef_compile_options(ef_core_tests)
     add_test(NAME core COMMAND ef_core_tests)
+    add_executable(ef_tile_stream_tests tests/tile_stream_tests.cpp)
+    target_link_libraries(ef_tile_stream_tests PRIVATE ef_core)
+    ef_compile_options(ef_tile_stream_tests)
+    add_test(NAME tile_stream COMMAND ef_tile_stream_tests)
     add_executable(ef_hd_image_tests tests/hd_image_tests.cpp)
     target_link_libraries(ef_hd_image_tests PRIVATE ef_core)
     ef_compile_options(ef_hd_image_tests)

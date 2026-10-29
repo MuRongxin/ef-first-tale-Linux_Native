@@ -2,6 +2,7 @@
 #include "core/display.hpp"
 #include "data/content.hpp"
 #include "data/image.hpp"
+#include "data/tile_stream.hpp"
 #include "scene/scene.hpp"
 #include "scene/shake.hpp"
 #include <GL/glew.h>
@@ -48,11 +49,16 @@ public:
     void preload(const Content&,const std::vector<Layer>&,AssetTier);
     void invalidate_scene();
     void clear_cache();
+    struct TileStats {std::size_t gpu_bytes{},resident{},visible_missing{};std::uint64_t uploads{};TileStream::Stats worker;};
+    [[nodiscard]] TileStats tile_stats() const;
     [[nodiscard]] Image save_thumbnail() const;
     void capture(const std::filesystem::path& path, int width, int height) const;
 private:
     void cleanup();
-    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {}, GLuint overlay = 0, std::array<float,4> overlay_map = {}, std::array<int,3> hsv = {}, GLuint old = 0, GLuint mask = 0, float phase = 0,int transition_type = 0,std::array<int,4> region = {}, float bottom_limit = 0);
+    void quad_id(GLuint texture, float x, float y, float w, float h, Color color, bool flip_y, std::array<float,4> uv = {0,0,1,1}, GLuint screen = 0, std::array<float,4> screen_map = {}, GLuint overlay = 0, std::array<float,4> overlay_map = {}, std::array<int,3> hsv = {}, GLuint old = 0, GLuint mask = 0, float phase = 0,int transition_type = 0,std::array<int,4> region = {}, float bottom_limit = 0,std::array<float,4> source_map = {0,0,1,1});
+    bool tiled(const ImageVariant&) const;
+    bool tiled_image(const Content&,const Layer&,AssetTier,std::array<float,4> uv,GLuint screen,std::array<float,4> screen_map,GLuint overlay,std::array<float,4> overlay_map,bool paint=true);
+    void poll_tiles();
     void opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier, const std::function<void(const Layer&)>& text);
     struct Target {
         GLuint framebuffer{}, texture{};
@@ -67,6 +73,13 @@ private:
     struct Entry { Texture texture; std::size_t bytes{}; std::uint64_t used{}; int width{},height{}; };
     Entry& texture(const Content& content,const std::string& asset,AssetTier tier,bool strip=false,GLuint pinned=0);
     std::map<std::string, Entry> cache_,strips_;
+    TileStream tile_stream_;
+    struct TileDemand {int width{},height{};std::vector<TileIndex> visible;std::uint64_t frame{};};
+    std::map<std::string,TileDemand> tile_demands_;
+    std::map<std::pair<std::string,TileIndex>,Entry> tiles_;
+    std::size_t tile_bytes_{},frame_upload_bytes_{};
+    std::uint64_t tile_frame_{},tile_uploads_{};
+    static constexpr std::size_t tile_budget_=192ULL*1024*1024;
     std::set<std::string> rejected_,strip_rejected_,reported_;
     std::size_t cache_bytes_{},strip_bytes_{};
     static constexpr std::size_t strip_budget_=4ULL*1024*1024;
@@ -75,6 +88,7 @@ private:
     static constexpr std::size_t budget_ = 512ULL * 1024 * 1024;
     GLuint program_{}, vao_{}, vbo_{};
     GLint rect_uniform_{}, color_uniform_{}, flip_uniform_{}, uv_uniform_{},bottom_uniform_{};
+    GLint source_map_uniform_{};
     GLint screen_uniform_{},screen_map_uniform_{};
     GLint hsv_uniform_{},hsv_enabled_{},transition_uniform_{},phase_uniform_{},region_uniform_{};
     GLint overlay_uniform_{},overlay_map_uniform_{};

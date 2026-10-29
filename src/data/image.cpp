@@ -8,6 +8,8 @@
 #include <limits>
 #include <stdexcept>
 #include <cstring>
+#include <cstdio>
+#include <memory>
 
 namespace ef {
 namespace {
@@ -155,5 +157,46 @@ Image decode_image_scaled(const std::filesystem::path& path, int max_width, int 
 }
 Image decode_image(const std::filesystem::path& path) {
     return decode_image_scaled(path,65536,65536);
+}
+void stream_image_rows(const std::filesystem::path& path,int width,int height,
+                       const std::function<void(int,std::span<const std::uint8_t>)>& receive) {
+    struct FileCloser {void operator()(FILE* file) const {std::fclose(file);}};
+    std::unique_ptr<FILE,FileCloser> file(std::fopen(path.c_str(),"rb"));
+    if (!file) throw std::runtime_error("Cannot open streaming image: "+path.string());
+    std::array<unsigned char,8> signature{};
+    const auto count=std::fread(signature.data(),1,signature.size(),file.get());
+    std::rewind(file.get());
+    if (count!=8 || png_sig_cmp(signature.data(),0,8)!=0) {
+        const auto image=decode_image_scaled(path,width,height,width,height);
+        for (int y=0;y<height;++y) receive(y,std::span(image.rgba).subspan(static_cast<std::size_t>(y)*width*4,static_cast<std::size_t>(width)*4));
+        return;
+    }
+    // All C++ owners are created before setjmp; libpng errors do not jump over them.
+    struct Reader {
+        png_structp png=png_create_read_struct(PNG_LIBPNG_VER_STRING,nullptr,nullptr,nullptr);
+        png_infop info=png ? png_create_info_struct(png) : nullptr;
+        ~Reader() {if (png) png_destroy_read_struct(&png,info ? &info : nullptr,nullptr);}
+    } reader;
+    std::vector<std::uint8_t> row(pixel_bytes(width,1));
+    if (!reader.png || !reader.info) throw std::runtime_error("Cannot allocate streaming PNG reader");
+    if (setjmp(png_jmpbuf(reader.png))) throw std::runtime_error("Streaming PNG decode failed: "+path.string());
+    auto* png=reader.png;auto* info=reader.info;
+    png_init_io(png,file.get());png_read_info(png,info);
+    if (png_get_image_width(png,info)!=static_cast<unsigned>(width) || png_get_image_height(png,info)!=static_cast<unsigned>(height))
+        throw std::runtime_error("Streaming image dimensions differ from declaration");
+    if (png_get_interlace_type(png,info)!=PNG_INTERLACE_NONE)
+        throw std::runtime_error("Interlaced panorama requires non-interlaced PNG import");
+    const auto color=png_get_color_type(png,info),depth=png_get_bit_depth(png,info);
+    if (depth==16) png_set_strip_16(png);
+    if (color==PNG_COLOR_TYPE_PALETTE) png_set_palette_to_rgb(png);
+    if (color==PNG_COLOR_TYPE_GRAY && depth<8) png_set_expand_gray_1_2_4_to_8(png);
+    const bool transparent=png_get_valid(png,info,PNG_INFO_tRNS)!=0;
+    if (transparent) png_set_tRNS_to_alpha(png);
+    if (color==PNG_COLOR_TYPE_GRAY || color==PNG_COLOR_TYPE_GRAY_ALPHA) png_set_gray_to_rgb(png);
+    if (!(color&PNG_COLOR_MASK_ALPHA) && !transparent) png_set_add_alpha(png,255,PNG_FILLER_AFTER);
+    png_read_update_info(png,info);
+    if (png_get_rowbytes(png,info)!=row.size()) throw std::runtime_error("Unexpected streaming PNG row format");
+    for (int y=0;y<height;++y) {png_read_row(png,row.data(),nullptr);receive(y,row);}
+    png_read_end(png,info);
 }
 }
