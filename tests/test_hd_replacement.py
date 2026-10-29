@@ -56,11 +56,12 @@ class HDReplacementTests(unittest.TestCase):
     def test_control_map_preserves_every_original_sample_and_alpha(self):
         row={**self.rows()[0],'method':'procedural_regen','category':'tint'}
         src=self.project/'assets/raw'/row['rel_path']
-        im=Image.new('RGBA',(2,1));im.putdata([(3,40,80,0),(90,140,220,128)]);im.save(src,'PNG')
+        im=Image.new('RGBA',(2,1));im.putdata([(3,40,80,0),(90,140,220,128)]);im.save(src,'PNG',icc_profile=b'test profile')
         row['sha256']=hashlib.sha256(src.read_bytes()).hexdigest();before=src.read_bytes()
         result=generate(self.project,row)
         for scale,output in zip((4,8),result['outputs']):
             with Image.open(self.project/output['path']) as hd:
+                self.assertNotIn('icc_profile',hd.info)
                 self.assertEqual(hd.size,(2*scale,scale))
                 self.assertEqual(hd.getpixel((0,0)),(3,40,80,0))
                 self.assertEqual(hd.getpixel((scale,0)),(90,140,220,128))

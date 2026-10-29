@@ -34,6 +34,9 @@ def generate(project: Path, row: dict) -> dict:
             raise ValueError(f'存在冲突的 WebP：{dest}')
         dest.parent.mkdir(parents=True, exist_ok=True)
         scaled = original.resize((original.width * scale, original.height * scale), sampling)
+        # Control maps are numeric RGBA samples. A source grayscale ICC profile
+        # is invalid after RGBA conversion and must not be copied to the output.
+        scaled.info.clear()
         temp = dest.with_suffix('.partial')
         try:
             scaled.save(temp, 'PNG', compress_level=3)
