@@ -24,6 +24,7 @@ public:
     bool command(const Instruction& instruction);
     void message(const Message& message);
     void update(double seconds);
+    void eye_sequence(std::int64_t value) { eye_sequence_=value>=0 && value<=5 ? static_cast<int>(value) : 2; }
     void local_assignment(const std::string& name, std::int64_t value);
     [[nodiscard]] std::int64_t finder_counter() const;
     [[nodiscard]] bool busy() const;
@@ -73,6 +74,8 @@ private:
     bool pending_finder_{}, finder_{};
     double finder_ticks_{}; // Native global 10ms clock, including time with the finder hidden.
     std::uint64_t revision_{};
+    int eye_sequence_{2};
+    std::string lip_actor_;
     int speed_{9999}, panel_{3},active_speed_{9999},transition_type_{},active_type_{};
     std::string transition_mask_,active_mask_;
     std::array<std::array<int,3>,2> hsv_{};

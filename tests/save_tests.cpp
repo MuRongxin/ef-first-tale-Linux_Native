@@ -26,6 +26,7 @@ struct Fixture {
         }
         catalog["entries"]["bgm/other"]={{"kind","bgm"},{"name","other"},{"tag","bgm"},{"path","tone.ogg"},{"source_sha256",std::string(64,'b')}};
         catalog["entries"]["bgm/tone"]={{"kind","bgm"},{"name","tone"},{"tag","bgm"},{"path","tone.ogg"},{"source_sha256",std::string(64,'b')}};
+        catalog["entries"]["voice/tone"]={{"kind","voice"},{"name","tone"},{"tag","voice"},{"path","tone.ogg"},{"source_sha256",std::string(64,'b')}};
         std::filesystem::copy_file(EF_AUDIO_FIXTURE,temp.path/"tone.ogg");
         std::filesystem::copy_file(EF_UI_FIXTURE,temp.path/"message.ui.json");
         J doc={{"format","ef.script"},{"version",1},{"id","scr/start.sc"},{"instructions",J::array({
@@ -38,12 +39,19 @@ struct Fixture {
         J end={{"format","ef.script"},{"version",1},{"id","scr/end.sc"},{"instructions",J::array({dialogue(1,200,"完成"),node(2,"end",J::object())})}};
         put(temp.path/"start.json",doc);put(temp.path/"end.json",end);
         put(temp.path/"index.json",{{"version",2},{"format","ef.script.v1"},{"encoding","utf-8"},{"view","unused.json"},{"message_ui","message.ui.json"},{"scripts",{{"scr/start.sc",{{"path","start.json"},{"json_sha256",std::string(64,'a')}}},{"scr/end.sc",{{"path","end.json"},{"json_sha256",std::string(64,'b')}}}}}});
+        manifest["animations"]="animations.json";
+        put(temp.path/"animations.json",{{"format","ef.animations"},{"version",1},{"source_scale",1},{"images",{
+            {"bg/actor.png",{{"source_sha256",std::string(64,'c')},{"base_sha256",std::string(64,'a')},{"records",J::array({
+                {{"actor","景"},{"state","中目"},{"path","half.png"},{"size",{4,4}},{"offset",{10,10}}},
+                {{"actor","景"},{"state","閉じ目"},{"path","closed.png"},{"size",{4,4}},{"offset",{10,10}}},
+                {{"actor","景"},{"state","中口"},{"path","mid.png"},{"size",{4,4}},{"offset",{10,20}}},
+                {{"actor","景"},{"state","開き口"},{"path","open.png"},{"size",{4,4}},{"offset",{10,20}}}})}}}}}});
         put(temp.path/"resources.json",catalog);put(temp.path/"manifest.json",manifest);
     }
 };
 struct Session {
     const Content& c;ScriptLibrary library;Presentation host;ScriptRuntime vm;MessageUI ui;
-    explicit Session(const Content& content,const std::string& entry="scr/start.sc") : c(content),library(c),host(c),vm([&](const auto& id){return library.compile(id,'e');},[&](const auto& from,const auto& to){return library.resolve(from,to);},entry,{'e',false,0,0}),ui(c,"message.ui.json") {
+    explicit Session(const Content& content,const std::string& entry="scr/start.sc",Presentation::AudioDecoder decoder=decode_audio) : c(content),library(c),host(c,std::move(decoder)),vm([&](const auto& id){return library.compile(id,'e');},[&](const auto& from,const auto& to){return library.resolve(from,to);},entry,{'e',false,0,0}),ui(c,"message.ui.json") {
         vm.set_host({[&](const Instruction& i){const bool v=host.command(i);if (i.command==".panel") ui.transition_to(host.panel_mode(),{});return v;},
             [&](const Message& m){host.message(m);ui.begin_message(host.panel_mode(),m);},[&](double dt){host.update(dt);vm.update_local_variable("finderCounter",host.finder_counter());ui.update(dt);},[&]{return host.busy() || ui.busy();},[&]{return host.mixer().playing(AudioChannel::voice);},[&](const auto& k,auto v){host.local_assignment(k,v);}});
     }
@@ -62,6 +70,29 @@ int main() {
         original.command("bgm",{{"asset","other"},{"fade_in",10},{"fade_out",10},{"volume",50}});
         const auto saved=original.save();const auto file=f.temp.path/"save.json";write_checkpoint(file,saved);
         Session restored(c);restored.load(read_checkpoint(file));require(normalized(saved)==normalized(restored.save()),"Checkpoint did not restore full state/NVL page");
+        require(original.host.current()[1].animation.has_value(),"ANI not attached to stage");
+        for (int i=0;i<40;++i) {
+            original.host.update(.01);restored.host.update(.01);
+            require(original.save()["presentation"]==restored.save()["presentation"],"ANI clocks diverged after native save restore");
+        }
+        auto pcm=std::make_shared<AudioClip>(AudioClip{48000,1,std::vector<float>(4096*8,.125f)});
+        std::fill(pcm->samples.begin()+4096,pcm->samples.begin()+8192,.25f);
+        const Presentation::AudioDecoder decode_voice=[&](const auto&) {return pcm;};
+        Session talking(c,"scr/start.sc",decode_voice);talking.pump(ScriptState::message);
+        talking.host.message({"scr/start.sc","tone","#景","",100,5});talking.host.update(4096.0/48000);
+        const auto lip_save=talking.save();Session resumed(c,"scr/start.sc",decode_voice);resumed.load(lip_save);
+        require(lip_save["presentation"]["lip_actor"]=="景","Saved speaker identity lost");
+        require(lip_save["presentation"]==resumed.save()["presentation"],"Saved mouth/PCM position did not restore");
+        for (int i=0;i<30;++i) {
+            talking.host.update(.01);resumed.host.update(.01);
+            require(talking.save()["presentation"]==resumed.save()["presentation"],"Lip state diverged after voice resume");
+        }
+        auto old_lips=lip_save;old_lips["presentation"].erase("lip_actor");
+        {Session old(c,"scr/start.sc",decode_voice);old.load(old_lips);old.host.update(.01);}
+        auto corrupt_animation=saved;corrupt_animation["presentation"]["layers"][1]["animation"]["source_sha256"]=std::string(64,'d');
+        {Session candidate(c);rejects([&] {candidate.load(corrupt_animation);});}
+        auto legacy=saved;legacy["presentation"]["layers"][1].erase("animation");
+        {Session candidate(c);candidate.load(legacy);require(!candidate.host.current()[1].animation,"Old save without ANI must remain readable");}
         std::array<float,32> a{},b{};original.host.mixer().mix(a);restored.host.mixer().mix(b);require(a==b,"Restored audio did not retain sample position/envelope");
         original.vm.advance();restored.vm.advance();original.pump(ScriptState::choices);restored.pump(ScriptState::choices);
         const auto choice=restored.save();Session branch(c);branch.load(choice);branch.vm.choose(1);branch.pump(ScriptState::message);

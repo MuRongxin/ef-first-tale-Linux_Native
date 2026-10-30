@@ -92,6 +92,39 @@ Content::Content(const std::filesystem::path& root) : root_(std::filesystem::can
             static_cast<std::int64_t>(c[0])+c[2]>source->second.width || static_cast<std::int64_t>(c[1])+c[3]>source->second.height)
             throw std::runtime_error(id+": derived crop outside source canvas");
     }
+    if (doc.contains("animations")) {
+        const auto catalog=read_json(doc.at("animations").get<std::string>());
+        if (catalog.at("format")!="ef.animations" || catalog.at("version")!=1 || catalog.at("source_scale")!=1 || !catalog.at("images").is_object())
+            throw std::runtime_error("Unsupported animation catalog");
+        for (const auto& [id,spec]:catalog.at("images").items()) {
+            const auto& base=asset(id);
+            if (spec.at("base_sha256")!=doc.at("images").at(id).at("source_sha256")) throw std::runtime_error("Animation/base hash mismatch");
+            AnimationSpec animation;animation.source_sha256=spec.at("source_sha256").get<std::string>();
+            if (animation.source_sha256.size()!=64 || animation.source_sha256.find_first_not_of("0123456789abcdef")!=std::string::npos)
+                throw std::runtime_error("Invalid animation hash");
+            const auto& patches=spec.at("records");
+            if (!patches.is_array() || patches.empty() || patches.size()>256) throw std::runtime_error("Invalid animation record count");
+            for (const auto& p:patches) {
+                const auto pair=[](const nlohmann::json& value) {
+                    if (!value.is_array() || value.size()!=2 || !std::all_of(value.begin(),value.end(),[](const auto& n) {
+                        return n.is_number_integer() && n.template get<double>()>=0 && n.template get<double>()<=65536;
+                    })) throw std::runtime_error("Invalid animation geometry");
+                    return value.get<std::array<int,2>>();
+                };
+                const auto size=pair(p.at("size")),offset=pair(p.at("offset"));
+                AnimationPatch patch{p.at("actor").get<std::string>(),p.at("state").get<std::string>(),p.value("path",std::string{}),size[0],size[1],offset[0],offset[1]};
+                if (patch.actor.empty() || patch.actor.size()>1024 || patch.state.empty() || patch.state.size()>4096 ||
+                    patch.actor.find('\0')!=std::string::npos || patch.state.find('\0')!=std::string::npos ||
+                    patch.x<0 || patch.y<0 || patch.width<0 || patch.height<0 || patch.x>base.width || patch.y>base.height ||
+                    patch.width>base.width-patch.x || patch.height>base.height-patch.y ||
+                    (patch.width==0)!=(patch.height==0) || (patch.width==0)!=patch.path.empty())
+                    throw std::runtime_error("Invalid animation patch");
+                if (!patch.path.empty()) (void)resolve(patch.path);
+                animation.patches.push_back(std::move(patch));
+            }
+            animations_.emplace(id,std::move(animation));
+        }
+    }
     script_index_ = doc.value("script_index", "scripts/index.json");
     (void)resolve(script_index_);
     if (doc.contains("resources")) {

@@ -91,6 +91,7 @@ Layer Presentation::image(const std::string& name, bool r18) const {
     Layer result;
     result.kind = LayerKind::image; result.asset = resource.id;
     result.width = static_cast<float>(asset.width); result.height = static_cast<float>(asset.height);
+    if (const auto* animation=content_.animation(resource.id)) result.animation.emplace(*animation,eye_sequence_);
     return result;
 }
 void Presentation::play(AudioChannel channel, const std::string& kind, const std::string& name, bool r18, bool loop, float gain, double fade_seconds, double fade_out_rate) {
@@ -120,8 +121,14 @@ void Presentation::play(AudioChannel channel, const std::string& kind, const std
     playing_ids_.at(static_cast<std::size_t>(channel)) = resource.id;
     playing_loops_.at(static_cast<std::size_t>(channel))=loop;
 }
-void Presentation::voice(const std::string& name, bool r18) { play(AudioChannel::voice,"voice",name,r18,false,1,0); }
-void Presentation::message(const Message& value) { voice(value.voice, value.script.starts_with("r18_scr/")); }
+void Presentation::voice(const std::string& name, bool r18) {
+    play(AudioChannel::voice,"voice",name,r18,false,1,0);
+    for (auto& layer:current_) if (layer.animation) layer.animation->reset_voice();
+}
+void Presentation::message(const Message& value) {
+    voice(value.voice, value.script.starts_with("r18_scr/"));
+    lip_actor_=animation_actor_name(value.name);
+}
 float Presentation::progress() const {
     if (!fading_) return 1;
     // Native transition state is an integer counter for every type:
@@ -139,6 +146,14 @@ void Presentation::update(double seconds) {
     mixer_.collect_finished();
     if (shake_) { shake_->update(seconds); if (shake_->finished()) shake_.reset(); }
     if (fading_) { elapsed_ += seconds; if (progress() >= 1) { fading_ = false; previous_.clear(); transition_frame_.clear(); } }
+    const auto envelope=mixer_.voice_envelope();
+    for (auto& layer:current_) if (layer.animation) {
+        layer.animation->update(seconds,!fading_ && !shaking());
+        if (!fading_ && !shaking()) {
+            if (envelope.active) layer.animation->voice(lip_actor_,envelope.amplitude,envelope.serial,true);
+            else layer.animation->reset_voice();
+        }
+    }
     if (walking_) walking_->update(seconds);
     if (cutin_) { cutin_->update(seconds); if (cutin_->finished()) cutin_.reset(); }
     if (snow_) { snow_->update(seconds); if (snow_->finished()) snow_.reset(); }

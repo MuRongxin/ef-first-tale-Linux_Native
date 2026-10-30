@@ -47,9 +47,9 @@
 - 交叉验证：可用 Wine + 运行时观测（截帧/内存）辅助，但非必需。
 
 ## P2 `.ani` 动画格式
-- `.ani` 与同名 `.png` 配对（st.paz），未压缩者头 `00 01 02 00`（长度 0x??），压缩者 zlib 后 `00 01 04 00`；解压后比 original_size 多 8 个 0（引擎按 original_size 截断，paz.py 已截）。
-- 下一步：解出多帧差分/序列长度，试按"帧数 + 每帧矩形 + RLE/delta"解析；对照同名 PNG 基底还原帧。
-- 移植回退：静态显示 PNG 即可。
+- 已完成全部 2,226 文件 / 9,896 记录的离线结构解析与 PNG 图块导出，详见 [ANI 格式与边界](ANI-FORMAT.md)。
+- 八种头部实为记录数量；图块含角色口眼状态与 7 条显式控制记录，不能作为固定帧率序列播放。
+- 已取证并实现独立的六套眨眼序列表、口型数值状态机及实际显式循环子集；宿主 10ms 时钟和状态名称表已确认，眨眼/显式循环已接场景合成与存档；PCM 包络与中文角色映射已接入（见 [取证与边界](LIP-SYNC-20261030.md)）；继续跨 stage 复用、高清图块与原版逐帧对照。
 
 ## P3 UI 布局
 - 菜单界面坐标硬编码（exe）+ sys.paz 资源（`configBase.png`、`album*`、`Memories*`、`MusicMode/MusicParts`、`backlogGauge`、`bat*`、`Select*`、`checkmark*`、`thumb/`）。字符/按钮文本经 `DLL` 资源（汉化）或 `LoadStringA`。

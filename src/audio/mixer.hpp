@@ -8,6 +8,11 @@
 
 namespace ef {
 enum class AudioChannel : std::size_t { bgm, voice, se, se2 };
+struct VoiceEnvelope {
+    std::uint32_t amplitude{},serial{};
+    bool active{};
+    std::string resource_id;
+};
 class AudioMixer {
     friend struct CheckpointCodec;
 public:
@@ -25,6 +30,7 @@ public:
     void stop_all();
     [[nodiscard]] bool playing(AudioChannel channel) const;
     [[nodiscard]] float gain(AudioChannel channel) const;
+    [[nodiscard]] VoiceEnvelope voice_envelope() const;
     [[nodiscard]] int sample_rate() const { return output_rate_; }
     // Callback-safe: fixed work per frame, no file I/O, decoding or clip allocation/free.
     void mix(std::span<float> interleaved_stereo);
@@ -42,6 +48,7 @@ private:
         bool active{}, loop{}, stop_after_ramp{};
         AudioChannel channel{};
         std::string resource_id;
+        std::shared_ptr<const std::vector<std::uint32_t>> envelope;
     };
     [[nodiscard]] std::uint64_t duration_frames(double seconds) const;
     static std::size_t index(AudioChannel channel);

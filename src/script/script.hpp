@@ -65,6 +65,7 @@ struct ScriptHost {
     std::function<bool()> voice_playing{};
     std::function<void(const std::string&, std::int64_t)> local_assignment{};
     std::function<void(const Instruction&)> observe{};
+    std::function<void(const std::string&, std::int64_t)> global_assignment{};
 };
 class ScriptRuntime {
     friend struct CheckpointCodec;

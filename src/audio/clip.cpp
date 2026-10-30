@@ -98,6 +98,23 @@ AudioClip vorbis(const Bytes& bytes) {
     return clip;
 }
 }
+std::vector<std::uint32_t> make_voice_envelope(const AudioClip& clip) {
+    if (clip.channels<1 || clip.channels>2 || clip.samples.size()%static_cast<std::size_t>(clip.channels)) throw std::runtime_error("Invalid voice PCM");
+    std::vector<std::uint32_t> result;
+    result.reserve((clip.samples.size()+voice_envelope_words-1)/voice_envelope_words);
+    for (std::size_t begin=0;begin<clip.samples.size();begin+=voice_envelope_words) {
+        std::uint32_t total{};
+        const auto end=std::min(begin+voice_envelope_words,clip.samples.size());
+        for (auto i=begin;i<end;++i) {
+            const auto sample=clip.samples[i];
+            if (!std::isfinite(sample)) throw std::runtime_error("Non-finite voice PCM");
+            const auto value=static_cast<int>(std::lrint(std::clamp(static_cast<double>(sample),-1.0,32767.0/32768.0)*32768.0));
+            total+=static_cast<std::uint32_t>(value<0 ? -value : value);
+        }
+        result.push_back(total/static_cast<std::uint32_t>(voice_envelope_words));
+    }
+    return result;
+}
 std::shared_ptr<const AudioClip> decode_audio(const std::filesystem::path& path) {
     try {
         std::ifstream input(path, std::ios::binary | std::ios::ate);

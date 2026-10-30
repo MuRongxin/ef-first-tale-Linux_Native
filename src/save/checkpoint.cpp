@@ -56,12 +56,15 @@ std::optional<Message> message(const J& j) {
 }
 J layer(const Layer& l) {
     // Presentation layers do not contain message-layout flows or font overrides.
-    return {{"kind",static_cast<int>(l.kind)},{"part",static_cast<int>(l.part)},{"asset",l.asset},{"text",l.text},{"slot",l.slot},
+    auto result=J{{"kind",static_cast<int>(l.kind)},{"part",static_cast<int>(l.part)},{"asset",l.asset},{"text",l.text},{"slot",l.slot},
         {"screen",l.screen},{"overlay",l.overlay},{"hsv",l.hsv},{"trim",l.trim_bottom},{"geometry",{l.x,l.y,l.width,l.height,l.font_size}},
         {"color",l.color},{"source",l.source ? J(*l.source) : J()}};
+    if (l.animation) result["animation"]=l.animation->checkpoint();
+    return result;
 }
 Layer layer(const J& j,const Content& c) {
-    object(j,{"kind","part","asset","text","slot","screen","overlay","hsv","trim","geometry","color","source"});Layer l;
+    auto fields=j;fields.erase("animation");
+    object(fields,{"kind","part","asset","text","slot","screen","overlay","hsv","trim","geometry","color","source"});Layer l;
     l.kind=static_cast<LayerKind>(integer(j.at("kind"),0,2));l.part=static_cast<StagePart>(integer(j.at("part"),0,3));
     l.asset=string(j.at("asset"),1024);l.text=string(j.at("text"));l.slot=string(j.at("slot"),1024);
     l.screen=string(j.at("screen"),1024);l.overlay=string(j.at("overlay"),1024);
@@ -77,6 +80,10 @@ Layer layer(const J& j,const Content& c) {
     if (l.kind==LayerKind::image) {
         const auto& a=c.asset(l.asset);require(l.trim_bottom<a.height && !(l.trim_bottom && l.source),"Invalid saved image trim");
         if (l.source) {const auto& r=*l.source;require(r[2]>0 && r[3]>0 && r[0]+r[2]<=static_cast<float>(a.width) && r[1]+r[3]<=static_cast<float>(a.height),"Saved image atlas outside canvas");}
+    }
+    if (j.contains("animation")) {
+        const auto* spec=c.animation(l.asset);require(l.kind==LayerKind::image && spec,"Saved animation missing from content");
+        l.animation=ImageAnimation::restore(*spec,j.at("animation"));
     }
     return l;
 }
@@ -112,6 +119,7 @@ struct CheckpointCodec {
             s.resource_id=string(t.at("resource"),1024);const auto& r=c.resources().at(s.resource_id);
             const std::string kind=s.channel==AudioChannel::bgm ? "bgm" : s.channel==AudioChannel::voice ? "voice" : "se";
             require(r.kind==kind,"Saved audio resource kind mismatch");require(t.at("source_sha256")==r.source_sha256,"Saved audio resource has changed");s.clip=p.decoder_(c.resolve(r.path));
+            if (s.clip && s.channel==AudioChannel::voice) s.envelope=std::make_shared<const std::vector<std::uint32_t>>(make_voice_envelope(*s.clip));
             require(s.clip && s.clip->frames()>0,"Saved audio is empty");s.position=number(t.at("position"),0,static_cast<double>(s.clip->frames()));
             require(s.position<static_cast<double>(s.clip->frames()),"Saved audio position past EOF");
             s.gain=number(t.at("gain"),0,1);s.target=number(t.at("target"),0,1);s.gain_step=number(t.at("gain_step"),-1,1);
@@ -152,10 +160,12 @@ struct CheckpointCodec {
             {"finder_batteries",batteries},{"pending_finder",p.pending_finder_},{"finder",p.finder_},{"finder_ticks",p.finder_ticks_},
             {"speed",p.speed_},{"transition_type",p.transition_type_},{"transition_mask",p.transition_mask_},{"panel",p.panel_},
             {"hsv",p.hsv_},{"screens",p.screens_},{"overlays",p.overlays_},{"background",p.background_ ? J(*p.background_) : J()},
-            {"scroll",scroll},{"effects",effects(p)},{"playing_ids",p.playing_ids_},{"playing_loops",p.playing_loops_},{"audio",mixer(p.mixer_,p.content_)}};
+            {"lip_actor",p.lip_actor_},{"scroll",scroll},{"effects",effects(p)},{"playing_ids",p.playing_ids_},{"playing_loops",p.playing_loops_},{"audio",mixer(p.mixer_,p.content_)}};
     }
     static void presentation(const J& j,Presentation& p,const Content& c) {
-        object(j,{"layers","pending_frame","frame","finder_batteries","pending_finder","finder","finder_ticks","speed","transition_type","transition_mask","panel","hsv","screens","overlays","background","scroll","effects","playing_ids","playing_loops","audio"});
+        auto fields=j;fields.erase("lip_actor");
+        p.lip_actor_=j.contains("lip_actor") ? string(j.at("lip_actor"),1024) : std::string{};
+        object(fields,{"layers","pending_frame","frame","finder_batteries","pending_finder","finder","finder_ticks","speed","transition_type","transition_mask","panel","hsv","screens","overlays","background","scroll","effects","playing_ids","playing_loops","audio"});
         p.current_=layers(j.at("layers"),c);if (!j.at("pending_frame").is_null()) p.pending_frame_=layer(j.at("pending_frame"),c);if (!j.at("frame").is_null()) p.frame_=layer(j.at("frame"),c);
         const auto& bs=j.at("finder_batteries");array(bs,4);require(bs.size()==4,"Invalid finder batteries");for (std::size_t n=0;n<4;++n) if (!bs[n].is_null()) p.finder_batteries_[n]=layer(bs[n],c);
         p.pending_finder_=boolean(j.at("pending_finder"));p.finder_=boolean(j.at("finder"));if (p.finder_ || p.pending_finder_) for (const auto& b:bs) require(!b.is_null(),"Missing finder battery");
@@ -248,7 +258,9 @@ struct CheckpointCodec {
         header(j);require(j.at("binding")==binding(c),"Save is incompatible with this script package or message layout");
         // This API is used only for fresh candidates, never for the currently attached mixer.
         require(r.state_==ScriptState::running && r.pc_==0 && !p.realtime_ && p.current_.empty(),"Restore requires a fresh, unattached candidate");
-        runtime(j.at("vm"),r,c);presentation(j.at("presentation"),p,c);ui(j.at("message_ui"),u,c,r.options_.variant);
+        runtime(j.at("vm"),r,c);presentation(j.at("presentation"),p,c);
+        if (const auto it=r.globals_.find("EYE_SEQ_DEFAULT");it!=r.globals_.end()) p.eye_sequence(it->second);
+        ui(j.at("message_ui"),u,c,r.options_.variant);
         if (u) {
             require(u->mode_==p.panel_,"Saved panel/layout mode disagree");
             if (r.state_==ScriptState::message) require(u->active_message_.has_value(),"Saved dialogue has no active message UI");

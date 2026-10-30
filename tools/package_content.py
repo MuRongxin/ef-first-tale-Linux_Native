@@ -189,6 +189,10 @@ def package(project, game, out, font, face, hd_only=False, *, decode_images=Fals
                     print(f"图像导入/{'完整解码' if decode_images else '哈希与尺寸校验'}：{n}/{len(images)}", flush=True)
         finally:
             pool.shutdown(wait=True, cancel_futures=True)
+        from import_animations import import_animations
+        animations = import_animations(project, out, manifest)
+        if animations['images']:
+            manifest['animations'] = store_json(out, animations, '.animations.json')
         font_path, _ = copy_blob(font, out, font.suffix.lower())
         manifest["font"] = {"path": font_path, "face": face}
         scene = json.loads((project / "examples/preview.scene.json").read_text())
@@ -208,7 +212,8 @@ def package(project, game, out, font, face, hd_only=False, *, decode_images=Fals
                        "image_validation": "sha256+dimensions+decode" if decode_images else "sha256+dimensions",
                        "raw_only_images": fallback, "raw_only_categories": dict(Counter(x['category'] for x in fallback)),
                        "runtime_derived_images": derived,
-                       "unconverted_animations": sum(row["kind"] == "ani" for row in rows),
+                       "unconverted_animations": 0,
+                       "animation_images": len(animations["images"]),
                        "name_conflicts": conflicts, "warnings": warnings,
                        "audio_archives": archives})
         manifest["import_report"] = store_json(out, report, ".import-report.json")

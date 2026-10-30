@@ -42,6 +42,8 @@ void AudioMixer::play(AudioChannel channel, std::shared_ptr<const AudioClip> cli
     // Validate caller-provided PCM on the control thread, never in the callback.
     if (!std::all_of(clip->samples.begin(), clip->samples.end(), [](float value) { return std::isfinite(value); }))
         throw std::runtime_error("Non-finite audio clip");
+    std::shared_ptr<const std::vector<std::uint32_t>> envelope;
+    if (channel==AudioChannel::voice) envelope=std::make_shared<const std::vector<std::uint32_t>>(make_voice_envelope(*clip));
     std::shared_ptr<const AudioClip> retired;
     {
         std::scoped_lock lock(mutex_);
@@ -59,7 +61,7 @@ void AudioMixer::play(AudioChannel channel, std::shared_ptr<const AudioClip> cli
             tail->ramp_left=out; tail->stop_after_ramp=true;
         } else retired=std::move(current.clip);
         slots_[i] = Slot{std::move(clip), 0, fade ? 0.0 : gain, gain, fade ? gain/static_cast<double>(fade) : 0,
-                         pan, fade, true, loop, false, channel, std::move(resource_id)};
+                         pan, fade, true, loop, false, channel, std::move(resource_id),std::move(envelope)};
     } // Retired PCM is freed outside the callback's lock.
 }
 void AudioMixer::stop_current(AudioChannel channel,double fade_out_seconds,double rate) {
@@ -122,6 +124,15 @@ bool AudioMixer::current_playing(AudioChannel channel) const {
     const auto i=index(channel);
     std::scoped_lock lock(mutex_);
     return slots_[i].active;
+}
+VoiceEnvelope AudioMixer::voice_envelope() const {
+    std::scoped_lock lock(mutex_);
+    const auto& slot=slots_[index(AudioChannel::voice)];
+    if (!slot.active || !slot.clip || !slot.envelope) return {};
+    const auto words=static_cast<std::size_t>(slot.position)*static_cast<std::size_t>(slot.clip->channels);
+    const auto block=words/voice_envelope_words;
+    const auto amplitude=block && block<=slot.envelope->size() ? slot.envelope->at(block-1) : 0;
+    return {amplitude,static_cast<std::uint32_t>(block),true,slot.resource_id};
 }
 float AudioMixer::gain(AudioChannel channel) const {
     const auto i = index(channel);

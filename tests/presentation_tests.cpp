@@ -45,6 +45,12 @@ int main() {
             {"source_sha256",std::string(64,'d')},{"path","sample.avi"}};
         std::filesystem::copy_file(EF_AUDIO_FIXTURE,temp.path/"tone.ogg");
         std::ofstream(temp.path/"sample.avi") << "movie fixture";
+        manifest["animations"]="animations.json";
+        std::ofstream(temp.path/"animations.json")<<nlohmann::json{{"format","ef.animations"},{"version",1},{"source_scale",1},{"images",{
+            {"bg/actor.png",{{"source_sha256",std::string(64,'c')},{"base_sha256",std::string(64,'a')},{"records",nlohmann::json::array({
+                {{"actor","景"},{"state","中口"},{"path","mid.png"},{"size",{4,4}},{"offset",{10,10}}},
+                {{"actor","景"},{"state","開き口"},{"path","open.png"},{"size",{4,4}},{"offset",{10,10}}},
+                {{"actor","みやこ"},{"state","中口"},{"path","mid.png"},{"size",{4,4}},{"offset",{20,10}}}})}}}}}};
         std::ofstream(temp.path/"manifest.json") << manifest.dump();
         std::ofstream(temp.path/"catalog.json") << catalog.dump();
         Content content(temp.path);
@@ -302,6 +308,22 @@ int main() {
         rejects([&] { command(".movie 0 missing.avi 800 600 t\n"); });
         Presentation no_movies(content);
         rejects([&] { const auto i = parse_script(".movie 0 sample.avi 800 600 t\n", "scr/test.sc").at(0); no_movies.command(i); });
+        auto spoken_pcm=std::make_shared<AudioClip>(AudioClip{48000,1,std::vector<float>(4096*4,.0625f)});
+        std::fill(spoken_pcm->samples.begin()+4096,spoken_pcm->samples.begin()+8192,.125f);
+        Presentation lips(content,[&](const auto&) {return spoken_pcm;});
+        const auto lip_command=[&](const std::string& text) {return lips.command(parse_script(text,"scr/test.sc").at(0));};
+        lip_command(".stage * actor.png 0 0\n");
+        lips.message({"scr/test.sc","tone","@景","",1,1});
+        lips.update(4096.0/48000);require(lips.current()[0].animation->frames()==std::vector<std::size_t>{0},"Chinese speaker did not drive mid-mouth");
+        lips.update(4096.0/48000);require(lips.current()[0].animation->frames()==std::vector<std::size_t>{1},"Rising voice amplitude did not open mouth");
+        lips.message({"scr/test.sc","tone","#宫子","",2,2});
+        require(lips.current()[0].animation->frames().empty(),"Voice replacement left prior mouth open");
+        lips.update(4096.0/48000);require(lips.current()[0].animation->frames()==std::vector<std::size_t>{2},"New speaker animated wrong actor");
+        lip_command(".playVoice *\n");require(lips.current()[0].animation->frames().empty(),"Explicit voice stop did not reset lips immediately");
+        lips.message({"scr/test.sc","tone","景","",3,3});lips.update(1);
+        require(lips.current()[0].animation->frames().empty(),"Natural voice completion left mouth open");
+        lips.message({"scr/test.sc","tone","","",4,4});lips.update(4096.0/48000);
+        require(lips.current()[0].animation->frames().empty(),"Unnamed voice animated unrelated actors");
         std::cout << "Presentation tests PASS: scene placement, crossfade, scroll waits, panel, voiced messages, movie state and audio commands\n";
         return 0;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

@@ -183,6 +183,34 @@ int main(int argc, char** argv) {
         rejects([&] { mixer.stop_current(AudioChannel::bgm,0,std::numeric_limits<double>::infinity()); });
         rejects([&] { mixer.advance(-1); });
         rejects([&] { mixer.mix(std::span(output.data(),3)); });
+        // Native notification path averages absolute PCM16 over 8192 bytes,
+        // before gain/pan. Stereo has 2048 frames per packet, mono 4096.
+        AudioClip words{48000,1,std::vector<float>(4096,-1.0f)};
+        require(make_voice_envelope(words)==std::vector<std::uint32_t>{32768},"PCM16 -32768 absolute value");
+        words.samples.assign(4096,800.0f/32768);words.samples[0]=0;
+        require(make_voice_envelope(words)[0]==799,"Mean absolute amplitude must floor below threshold");
+        words.samples.assign(1,1.0f);require(make_voice_envelope(words)[0]==7,"Last packet zero padding");
+        std::vector<float> speech_pcm(4096*4,.125f);
+        std::fill(speech_pcm.begin()+4096,speech_pcm.begin()+8192,-.25f);
+        const auto speech_clip=clip(speech_pcm);
+        AudioMixer spoken(48000),spoken_mix(48000);
+        for (auto* m:{&spoken,&spoken_mix}) {
+            m->play(AudioChannel::bgm,clip({1}),true);
+            m->play(AudioChannel::voice,speech_clip,false,0,-1,0,0,0,"voice/test");
+            require(m->voice_envelope().active && m->voice_envelope().amplitude==0,"Envelope must wait for completed PCM block");
+        }
+        spoken.advance(4095.0/48000);require(spoken.voice_envelope().serial==0,"Premature PCM envelope packet");
+        spoken.advance(1.0/48000);
+        std::vector<float> pcm_output(4096*2);spoken_mix.mix(pcm_output);
+        require(spoken.voice_envelope().amplitude==4096 && spoken.voice_envelope().serial==1,"Completed mono meanabs/gain independence");
+        require(spoken_mix.voice_envelope().amplitude==spoken.voice_envelope().amplitude,"Device and silent envelope clocks disagree");
+        spoken.advance(4096.0/48000);require(spoken.voice_envelope().amplitude==8192,"Second PCM packet");
+        spoken.stop_current(AudioChannel::voice,1);require(!spoken.voice_envelope().active,"Outgoing voice fade must not own lips");
+        spoken.play(AudioChannel::voice,clip(speech_pcm,48000,2),false,1,0,0,0,0,"voice/stereo");
+        spoken.advance(2048.0/48000);require(spoken.voice_envelope().amplitude==4096 && spoken.voice_envelope().serial==1,"Stereo words/frame envelope boundary");
+        spoken.advance(1);require(!spoken.voice_envelope().active,"Completed voice retained a stale packet");
+        spoken.play(AudioChannel::voice,speech_clip);require(spoken.voice_envelope().serial==0 && spoken.voice_envelope().amplitude==0,"Replayed voice retained prior amplitude");
+        spoken.stop_all();require(!spoken.voice_envelope().active,"Stopped voice envelope");
         for (int n = 1; n < argc; ++n) {
             const auto actual = decode_audio(argv[n]);
             std::cout << "decoded " << argv[n] << " rate=" << actual->sample_rate << " channels=" << actual->channels << " frames=" << actual->frames() << " seconds=" << actual->duration() << '\n';

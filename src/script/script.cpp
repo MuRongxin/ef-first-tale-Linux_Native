@@ -341,7 +341,7 @@ void ScriptRuntime::execute(const Instruction& instruction) {
                 (value < 0 && base < std::numeric_limits<std::int64_t>::min() - value)) throw std::runtime_error("Arithmetic overflow");
             value += base;
         }
-        if (cmd == ".setGlobal") { globals_[args[0]] = value; variables_.erase(args[0]); }
+        if (cmd == ".setGlobal") { if (host_.global_assignment) host_.global_assignment(args[0],value); globals_[args[0]] = value; variables_.erase(args[0]); }
         else {
             if (host_.local_assignment) host_.local_assignment(args[0],value);
             variables_[args[0]] = value;

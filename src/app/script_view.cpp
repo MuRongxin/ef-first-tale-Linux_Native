@@ -30,7 +30,8 @@ ScriptView::ScriptView(const Content& content, const Options& options)
         },
         [this] { return presentation_.busy() || (message_ui_ && message_ui_->busy()); },
         [this] { return presentation_.mixer().playing(AudioChannel::voice); },
-        [this](const std::string& name,std::int64_t value) { presentation_.local_assignment(name,value); }});
+        [this](const std::string& name,std::int64_t value) { presentation_.local_assignment(name,value); }, {},
+        [this](const std::string& name,std::int64_t value) {if (name=="EYE_SEQ_DEFAULT") presentation_.eye_sequence(value);}});
     const auto index=content.read_json(content.script_index());
     presentation_.set_logging(!options.text_preview);
     if (options.chapter_entry) {
@@ -38,6 +39,7 @@ ScriptView::ScriptView(const Content& content, const Options& options)
         if (options.script!="scr/000_01mugai.sc") globals["ef_000"]=1;
         if (options.script=="scr/200_01.sc") globals["ef_700"]=1;
         runtime_.initialize_globals(globals);
+        presentation_.eye_sequence(globals.at("EYE_SEQ_DEFAULT"));
     }
     if (!options.text_preview && content.has_resource_catalog() && index.contains("message_ui"))
         message_ui_.emplace(content,index.at("message_ui").get<std::string>());

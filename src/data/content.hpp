@@ -1,6 +1,7 @@
 #pragma once
 #include "core/display.hpp"
 #include "data/image.hpp"
+#include "data/animation.hpp"
 #include <array>
 #include <nlohmann/json.hpp>
 #include <filesystem>
@@ -47,10 +48,14 @@ public:
     [[nodiscard]] const std::string& entry_scene() const { return entry_scene_; }
     [[nodiscard]] const std::string& font_path() const { return font_path_; }
     [[nodiscard]] int font_face() const { return font_face_; }
+    [[nodiscard]] const AnimationSpec* animation(const std::string& id) const {
+        const auto it=animations_.find(id);return it==animations_.end() ? nullptr : &it->second;
+    }
     void validate_images() const;
 private:
     std::filesystem::path root_;
     std::map<std::string, Asset> assets_;
+    std::map<std::string, AnimationSpec> animations_;
     std::map<std::string, Resource> resources_;
     std::map<std::pair<std::string, std::string>, std::vector<std::string>> resource_names_;
     std::map<std::pair<std::string, std::string>, std::vector<std::string>> resource_aliases_;

@@ -71,8 +71,10 @@ private:
         Target& operator=(const Target&) = delete;
     };
     struct Entry { Texture texture; std::size_t bytes{}; std::uint64_t used{}; int width{},height{}; };
+    Entry& animation_texture(const Content&,const AnimationPatch&);
     Entry& texture(const Content& content,const std::string& asset,AssetTier tier,bool strip=false,GLuint pinned=0);
-    std::map<std::string, Entry> cache_,strips_;
+    std::map<std::string, Entry> cache_,strips_,animation_cache_;
+    std::size_t animation_bytes_{};
     TileStream tile_stream_;
     struct TileDemand {int width{},height{};std::vector<TileIndex> visible;std::uint64_t frame{};};
     std::map<std::string,TileDemand> tile_demands_;

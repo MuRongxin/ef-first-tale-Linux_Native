@@ -345,7 +345,7 @@ void Renderer::invalidate_scene() {
     snapshot_valid_=false;previous_target_.reset();current_target_.reset();
 }
 void Renderer::clear_cache() {
-    invalidate_scene();cache_.clear();strips_.clear();cache_bytes_=strip_bytes_=0;
+    invalidate_scene();cache_.clear();strips_.clear();animation_cache_.clear();animation_bytes_=0;cache_bytes_=strip_bytes_=0;
     tile_stream_.clear();tiles_.clear();tile_demands_.clear();tile_bytes_=0;
     rejected_.clear();strip_rejected_.clear();reported_.clear();
 }
@@ -361,6 +361,11 @@ void Renderer::preload(const Content& content,const std::vector<Layer>& layers,A
         (void)tiled_image(content,l,tier,uv,0,{},0,{},false);
         if (!l.screen.empty()) (void)texture(content,l.screen,tier,true);
         if (!l.overlay.empty()) (void)texture(content,l.overlay,tier,true);
+        if (l.animation) {
+            const auto* spec=content.animation(l.asset);
+            if (!spec) throw std::runtime_error("Missing animation definition");
+            for (const auto index:l.animation->frames()) (void)animation_texture(content,spec->patches.at(index));
+        }
     }
 }
 void Renderer::opaque_scene(const Content& content, const std::vector<Layer>& layers, AssetTier tier, const std::function<void(const Layer&)>& text) {
@@ -631,6 +636,20 @@ bool Renderer::tiled_image(const Content& content,const Layer& layer,AssetTier t
     }
     return true;
 }
+Renderer::Entry& Renderer::animation_texture(const Content& content,const AnimationPatch& patch) {
+    if (auto it=animation_cache_.find(patch.path);it!=animation_cache_.end()) {it->second.used=++clock_;return it->second;}
+    constexpr std::size_t budget=64ULL*1024*1024;
+    if (patch.width<=0 || patch.height<=0 || patch.width>max_texture_size_ || patch.height>max_texture_size_ ||
+        static_cast<std::uint64_t>(patch.width)*static_cast<std::uint64_t>(patch.height)*4>budget) throw std::runtime_error("Animation patch exceeds GPU budget");
+    auto image=decode_image_scaled(content.resolve(patch.path),patch.width,patch.height,patch.width,patch.height);
+    const auto bytes=image.rgba.size();
+    while (animation_bytes_+bytes>budget && !animation_cache_.empty()) {
+        auto oldest=std::min_element(animation_cache_.begin(),animation_cache_.end(),[](const auto& a,const auto& b) {return a.second.used<b.second.used;});
+        animation_bytes_-=oldest->second.bytes;animation_cache_.erase(oldest);
+    }
+    Entry entry{Texture(image),bytes,++clock_,image.width,image.height};
+    auto [it,inserted]=animation_cache_.emplace(patch.path,std::move(entry));(void)inserted;animation_bytes_+=bytes;return it->second;
+}
 void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
     const auto& design=content.asset(layer.asset);
     if (layer.trim_bottom<0 || layer.trim_bottom>=design.height || (layer.trim_bottom && layer.source))
@@ -662,9 +681,26 @@ void Renderer::image(const Content& content,const Layer& layer,AssetTier tier) {
             throw std::runtime_error("Image atlas region outside design canvas");
         uv = {source[0]/static_cast<float>(asset.width),source[1]/static_cast<float>(asset.height),source[2]/static_cast<float>(asset.width),source[3]/static_cast<float>(asset.height)};
     }
-    if (tiled_image(content,layer,tier,uv,screen,screen_map,overlay,overlay_map)) return;
-    auto& primary=texture(content,layer.asset,tier);
-    quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map,layer.hsv,0,0,0,0,{},layer.trim_bottom ? static_cast<float>(material_height)/static_cast<float>(design.height) : 0);
+    if (!tiled_image(content,layer,tier,uv,screen,screen_map,overlay,overlay_map)) {
+        auto& primary=texture(content,layer.asset,tier);
+        quad_id(primary.texture.id(),layer.x,layer.y,layer.width,layer.height,layer.color,false,uv,screen,screen_map,overlay,overlay_map,layer.hsv,0,0,0,0,{},layer.trim_bottom ? static_cast<float>(material_height)/static_cast<float>(design.height) : 0);
+    }
+    if (!layer.animation) return;
+    const auto* animation=content.animation(layer.asset);
+    if (!animation) throw std::runtime_error("Missing animation definition");
+    const float base_w=static_cast<float>(design.width),base_h=static_cast<float>(design.height);
+    const float sx=uv[0]*base_w,sy=uv[1]*base_h,sw=uv[2]*base_w,sh=uv[3]*base_h;
+    for (const auto index:layer.animation->frames()) {
+        const auto& patch=animation->patches.at(index);
+        const float px=static_cast<float>(patch.x),py=static_cast<float>(patch.y),pw=static_cast<float>(patch.width),ph=static_cast<float>(patch.height);
+        const float x0=std::max(sx,px),y0=std::max(sy,py),x1=std::min(sx+sw,px+pw),y1=std::min(sy+sh,py+ph);
+        if (x1<=x0 || y1<=y0) continue;
+        const auto id=animation_texture(content,patch).texture.id();
+        quad_id(id,layer.x+(x0-sx)*layer.width/sw,layer.y+(y0-sy)*layer.height/sh,
+                (x1-x0)*layer.width/sw,(y1-y0)*layer.height/sh,layer.color,false,
+                {(x0-px)/pw,(y0-py)/ph,(x1-x0)/pw,(y1-y0)/ph},screen,screen_map,overlay,overlay_map,layer.hsv,0,0,0,0,{},
+                y1<py+ph ? (y1-py)/ph : 0,std::array<float,4>{px/base_w,py/base_h,pw/base_w,ph/base_h});
+    }
 }
 void Renderer::movie(const std::uint8_t* rgba,int width,int height,int x,int y,int w,int h) {
     if (!rgba || width <= 0 || height <= 0 || w <= 0 || h <= 0)

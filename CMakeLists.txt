@@ -34,6 +34,8 @@ add_library(ef_core
     src/scene/message_ui.cpp
     src/text/appearance.cpp
     src/text/layout.cpp
+    src/scene/image_animation.cpp
+    src/scene/animation_clock.cpp
     src/scene/walking.cpp
     src/scene/cutin.cpp
     src/scene/shake.cpp
@@ -125,6 +127,14 @@ if(EF_BUILD_APP)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(ef_image_animation_tests tests/image_animation_tests.cpp)
+    target_link_libraries(ef_image_animation_tests PRIVATE ef_core)
+    ef_compile_options(ef_image_animation_tests)
+    add_test(NAME image_animation COMMAND ef_image_animation_tests)
+    add_executable(ef_animation_clock_tests tests/animation_clock_tests.cpp)
+    target_link_libraries(ef_animation_clock_tests PRIVATE ef_core)
+    ef_compile_options(ef_animation_clock_tests)
+    add_test(NAME animation_clock COMMAND ef_animation_clock_tests)
     add_executable(ef_transition_tests tests/transition_tests.cpp)
     target_link_libraries(ef_transition_tests PRIVATE ef_core)
     ef_compile_options(ef_transition_tests)
@@ -166,6 +176,9 @@ if(BUILD_TESTING)
         add_executable(ef_shake_render_tests tests/shake_render_tests.cpp src/render/renderer.cpp)
         target_link_libraries(ef_shake_render_tests PRIVATE ef_core SDL3::SDL3 OpenGL::GL GLEW::GLEW)
         ef_compile_options(ef_shake_render_tests)
+        add_executable(ef_animation_render_tests tests/animation_render_tests.cpp src/render/renderer.cpp)
+        target_link_libraries(ef_animation_render_tests PRIVATE ef_core SDL3::SDL3 OpenGL::GL GLEW::GLEW)
+        ef_compile_options(ef_animation_render_tests)
         add_executable(ef_screen_render_tests tests/screen_render_tests.cpp src/render/renderer.cpp)
         target_link_libraries(ef_screen_render_tests PRIVATE ef_core SDL3::SDL3 OpenGL::GL GLEW::GLEW)
         ef_compile_options(ef_screen_render_tests)
@@ -192,6 +205,8 @@ if(BUILD_TESTING)
             set_tests_properties(transition_render PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME shake_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_shake_render_tests>)
             set_tests_properties(shake_render PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
+            add_test(NAME animation_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_animation_render_tests>)
+            set_tests_properties(animation_render PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME screen_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_screen_render_tests>)
             set_tests_properties(screen_render PROPERTIES ENVIRONMENT "SDL_VIDEO_DRIVER=x11;LIBGL_ALWAYS_SOFTWARE=1")
             add_test(NAME tiled_render COMMAND ${EF_XVFB_RUN} -a $<TARGET_FILE:ef_tiled_render_tests>)
@@ -312,6 +327,7 @@ if(BUILD_TESTING)
         endif()
         add_test(NAME route_audit COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_route_audit.py $<TARGET_FILE:ef_route_audit>)
         add_test(NAME script_json_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_script_json.py $<TARGET_FILE:ef_script_verify>)
+        add_test(NAME ani_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ani.py)
         add_test(NAME content_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_prepare_content.py)
         add_test(NAME message_ui_import COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_message_ui_import.py)
         add_test(NAME content_package COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_package_content.py)
